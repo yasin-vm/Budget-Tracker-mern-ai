@@ -1,0 +1,1 @@
+window.BUDGET_TRACKER_API_BASE = '';

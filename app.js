@@ -1,4 +1,5 @@
-const API_BASE = '/api';
+const configuredApiOrigin = window.BUDGET_TRACKER_API_BASE || '';
+const API_BASE = `${configuredApiOrigin.replace(/\/+$/, '')}/api`;
 
 // State
 let currentUser = null;
@@ -687,7 +688,7 @@ async function handleChatSubmit(e) {
     appendChatBubble('user', message);
     chatInput.value = '';
 
-    const loadingBubble = appendChatBubble('assistant', 'AI Financial Advisor is thinking...');
+    const loadingBubble = appendTypingBubble();
     const previousHistory = chatHistory.slice();
     const chatSendBtn = document.getElementById('chatSendBtn');
     chatSendBtn.disabled = true;
@@ -706,13 +707,16 @@ async function handleChatSubmit(e) {
         aiStatusText.textContent = engine === 'rule-based-fallback'
             ? 'AI Engine: fallback (set GEMINI_API_KEY for Gemini)'
             : `AI Engine: ${engine}`;
-        loadingBubble.textContent = json.data.reply;
+        loadingBubble.classList.remove('typing-bubble');
+        loadingBubble.innerHTML = formatChatResponse(json.data.reply);
         chatHistory.push({ role: 'user', content: message });
         chatHistory.push({ role: 'assistant', content: json.data.reply });
     } catch (err) {
+        loadingBubble.classList.remove('typing-bubble');
         loadingBubble.textContent = 'Error connecting to AI advisor: ' + err.message;
     } finally {
         chatSendBtn.disabled = false;
+        scrollChatToBottom();
     }
 }
 
@@ -721,8 +725,65 @@ function appendChatBubble(role, content) {
     bubble.className = `chat-bubble ${role}`;
     bubble.textContent = content;
     chatMessages.appendChild(bubble);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    scrollChatToBottom();
     return bubble;
+}
+
+function appendTypingBubble() {
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble assistant typing-bubble';
+    bubble.setAttribute('role', 'status');
+    bubble.setAttribute('aria-label', 'AI advisor is responding');
+    bubble.innerHTML = '<span class="typing-badge" aria-hidden="true">✨</span><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>';
+    chatMessages.appendChild(bubble);
+    scrollChatToBottom();
+    return bubble;
+}
+
+function formatChatResponse(response) {
+    const inlineMarkdown = value => escapeHTML(value)
+        .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-white">$1</strong>')
+        .replace(/(₹[\d,]+(?:\.\d{1,2})?)/g, '<span class="currency-figure">$1</span>');
+    const blocks = [];
+    let paragraphLines = [];
+    let listType = '';
+    let listItems = [];
+
+    const flushParagraph = () => {
+        if (!paragraphLines.length) return;
+        blocks.push(`<p>${paragraphLines.map(inlineMarkdown).join('<br>')}</p>`);
+        paragraphLines = [];
+    };
+    const flushList = () => {
+        if (!listItems.length) return;
+        blocks.push(`<${listType}>${listItems.map(item => `<li>${inlineMarkdown(item)}</li>`).join('')}</${listType}>`);
+        listItems = [];
+        listType = '';
+    };
+
+    for (const line of String(response ?? '').split(/\r?\n/)) {
+        const bullet = line.match(/^\s*[*-]\s+(.+)$/);
+        const numbered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+        if (bullet || numbered) {
+            flushParagraph();
+            const nextListType = bullet ? 'ul' : 'ol';
+            if (listType && listType !== nextListType) flushList();
+            listType = nextListType;
+            listItems.push((bullet || numbered)[1]);
+        } else {
+            flushList();
+            if (line.trim()) paragraphLines.push(line);
+            else flushParagraph();
+        }
+    }
+    flushList();
+    flushParagraph();
+    return blocks.join('');
+}
+
+function scrollChatToBottom() {
+    chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
 }
 
 // ----------------- MANUAL TRANSACTION -----------------
