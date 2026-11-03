@@ -17,6 +17,37 @@ function getAIClient() {
     return aiClient;
 }
 
+function isTemporaryCapacityError(error) {
+    const status = Number(error?.status ?? error?.response?.status ?? error?.error?.code);
+    const code = String(error?.code ?? error?.status ?? '').toUpperCase();
+    return status === 503 || status === 429
+        || code === 'UNAVAILABLE'
+        || code === 'RESOURCE_EXHAUSTED'
+        || /\b(?:503|429)\b/.test(String(error?.message || ''));
+}
+
+export async function generateContentWithFallback(client, contents) {
+    try {
+        return {
+            response: await client.models.generateContent({
+                model: 'gemini-3.8-flash',
+                contents
+            }),
+            model: 'gemini-3.8-flash'
+        };
+    } catch (error) {
+        if (!isTemporaryCapacityError(error)) throw error;
+        console.warn('Gemini 3.8 Flash is temporarily at capacity; retrying with gemini-2.0-flash.');
+        return {
+            response: await client.models.generateContent({
+                model: 'gemini-2.0-flash',
+                contents
+            }),
+            model: 'gemini-2.0-flash'
+        };
+    }
+}
+
 /**
  * Categorization dictionary for rule-based fallback
  */
@@ -92,10 +123,7 @@ Respond ONLY with a valid JSON object matching this schema, without any markdown
   "date": string (ISO 8601 date, default to current date if unspecified)
 }`;
 
-            const response = await client.models.generateContent({
-                model: 'gemini-3.8-flash',
-                contents: prompt,
-            });
+            const { response } = await generateContentWithFallback(client, prompt);
 
             const rawText = response.text ? response.text.trim() : '';
             const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
@@ -200,10 +228,7 @@ Return ONLY a valid JSON object without markdown fences, with these exact keys:
   "forecast": string (prediction for the remainder of the month)
 }`;
 
-            const response = await client.models.generateContent({
-                model: 'gemini-3.8-flash',
-                contents: prompt,
-            });
+            const { response, model } = await generateContentWithFallback(client, prompt);
 
             const rawText = response.text ? response.text.trim() : '';
             const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
@@ -212,7 +237,7 @@ Return ONLY a valid JSON object without markdown fences, with these exact keys:
             return {
                 stats: summaryStats,
                 aiAnalysis: aiData,
-                engine: 'gemini-3.8-flash'
+                engine: model
             };
         } catch (error) {
             console.warn('Gemini insights generation failed, using statistical fallback:', error.message);
@@ -312,14 +337,11 @@ Answer the user's questions clearly, giving specific figures based on their fina
 
             const fullPrompt = `${systemContext}\n\nConversation History:\n${historyText}\nUser: ${userMessage}\nAssistant:`;
 
-            const response = await client.models.generateContent({
-                model: 'gemini-3.8-flash',
-                contents: fullPrompt,
-            });
+            const { response, model } = await generateContentWithFallback(client, fullPrompt);
 
             return {
                 reply: response.text ? response.text.trim() : 'I am here to help you manage your budget!',
-                engine: 'gemini-3.8-flash'
+                engine: model
             };
         } catch (error) {
             console.warn('Gemini chat failed, using fallback responder:', error.message);
