@@ -4,11 +4,6 @@
   "private": true,
   "description": "Local development scripts for the Budget Tracker frontend and backend.",
   "scripts": {
-    "start": "concurrently --kill-others-on-fail -n backend,frontend \"npm run start:backend\" \"npm run start:frontend\"",
-    "start:backend": "npm --prefix backend start",
-    "start:frontend": "py -m http.server 5500 --directory public"
-  },
-  "devDependencies": {
-    "concurrently": "^9.2.1"
+    "start": "node backend/server.js"
   }
 }

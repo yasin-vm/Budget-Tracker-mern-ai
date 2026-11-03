@@ -21,7 +21,7 @@ window.BUDGET_TRACKER_API_BASE = 'https://your-backend.example.com';
 
 The app appends `/api` automatically. An empty value uses a same-origin `/api` path, suitable when a reverse proxy serves the API under the frontend domain.
 
-The backend must allow the frontend's exact origin in its `FRONTEND_ORIGINS` environment variable. See the backend repository README for API setup and deployment.
+When the dashboard is served by the backend on port 3000, it uses the same origin for API calls, so no CORS configuration is needed. See the backend repository README if hosting the frontend separately.
 
 ## Run locally
 
@@ -35,7 +35,7 @@ budget tracker on MERN/
 └── README.md
 ```
 
-Requirements: Git, Node.js/npm, Python (the Windows `py` launcher), and a MongoDB connection.
+Requirements: Git, Node.js/npm, and a MongoDB connection.
 
 For a fresh checkout of this frontend repository, clone the separate backend repository into `backend/`:
 
@@ -45,27 +45,22 @@ cd "Budget-Tracker-mern-ai"
 git clone https://github.com/yasin-vm/Budget-Tracker-ai-backend.git backend
 ```
 
-In the project root, install the frontend runner and backend dependencies. Create and configure `backend/.env` using its example file before starting the API:
+In the project root, install the backend dependencies and configure `backend/.env` using its example file:
 
 ```powershell
-npm install
 npm --prefix backend install
 Copy-Item backend/.env.example backend/.env
+```
+
+Set `MONGO_URI` in `backend/.env` and replace the blank `GEMINI_API_KEY` with your real Google AI Studio API key to enable Gemini features. A placeholder or blank key uses the offline AI fallback. The startup log reports whether a non-placeholder key was loaded. The `.env` file is local and must not be committed.
+
+Start the dashboard and API together on port 3000:
+
+```powershell
 npm start
 ```
 
-Set `MONGO_URI` in `backend/.env`; set `GEMINI_API_KEY` to enable Gemini features. The `.env` file is local and must not be committed.
-
-Open the frontend at `http://localhost:5500`. The backend API runs at `http://localhost:3000`; `http://localhost:3000/api` lists its endpoints. Keep the terminal running while using the app and press `Ctrl+C` to stop both services.
-
-To run either service separately, use two terminals from the project root:
-
-```powershell
-npm run start:backend
-npm run start:frontend
-```
-
-The frontend API origin is configured in `public/config.js` (defaults to `http://localhost:3000`). The backend must allow `http://localhost:5500` in `FRONTEND_ORIGINS`.
+Open `http://localhost:3000` for the dashboard. The API endpoint index is at `http://localhost:3000/api`. Keep the terminal running while using the app and press `Ctrl+C` to stop the server. No separate frontend server is required.
 
 ## Repository description
 

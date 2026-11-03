@@ -1,4 +1,4 @@
-const configuredApiOrigin = window.BUDGET_TRACKER_API_BASE || '';
+const configuredApiOrigin = window.BUDGET_TRACKER_API_BASE || 'http://localhost:3000';
 const API_BASE = `${configuredApiOrigin.replace(/\/+$/, '')}/api`;
 
 // State
