@@ -50,17 +50,29 @@ GEMINI_API_KEY=your_gemini_api_key_here
 npm install
 npm start
 ```
+On first startup, the app seeds an Administrator account if one does not already exist:
+
+- Username: `admin`
+- Password: `Password123!`
+
+Sign in at **`http://localhost:3000`** and use the Sign Up tab to create additional accounts. Passwords are stored as scrypt hashes and authenticated sessions are persisted in MongoDB; the browser keeps the session token in local storage. The default credentials are intended for local development and should not be exposed on a public deployment.
+
 Visit **`http://localhost:3000`** in your browser to open the interactive UI dashboard!
 
 ---
 
 ## 📡 AI API Reference
 
+Sign up with `POST /api/signup` or sign in with `POST /api/login`. Both return a session token. Send it on protected profile, transaction, and AI requests using `Authorization: Bearer <token>`. Use `POST /api/logout` to revoke the current session.
+
+The browser sends the signed-in user's ID with AI requests for context; the API binds data access and writes to the authenticated session user.
+
 ### 1. Parse Natural Language Text
 - **Endpoint**: `POST /api/ai/parse`
 - **Body**:
   ```json
   {
+    "userId": "<signed-in-user-id>",
     "text": "Paid 450 for Domino's pizza yesterday"
   }
   ```
@@ -84,7 +96,7 @@ Visit **`http://localhost:3000`** in your browser to open the interactive UI das
 - **Body**:
   ```json
   {
-    "userId": "<mongo_user_id>",
+    "userId": "<signed-in-user-id>",
     "text": "Received 50000 salary from tech job"
   }
   ```
@@ -94,7 +106,7 @@ Visit **`http://localhost:3000`** in your browser to open the interactive UI das
 - **Body**:
   ```json
   {
-    "userId": "<mongo_user_id>"
+    "userId": "<signed-in-user-id>"
   }
   ```
 - **Response**:
@@ -105,7 +117,7 @@ Visit **`http://localhost:3000`** in your browser to open the interactive UI das
 - **Body**:
   ```json
   {
-    "userId": "<mongo_user_id>",
+    "userId": "<signed-in-user-id>",
     "message": "Can I afford to spend 5000 on shoes?",
     "history": []
   }

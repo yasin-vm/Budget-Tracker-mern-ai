@@ -12,7 +12,8 @@ const transactionSchema = new mongoose.Schema(
 
     amount: {
       type: Number,
-      required: true
+      required: true,
+      min: 0.01
     },
 
     type: {
@@ -23,7 +24,8 @@ const transactionSchema = new mongoose.Schema(
 
     category: {
       type: String,
-      required: true
+      required: true,
+      trim: true
     },
 
     description: {

@@ -4,7 +4,6 @@ import {
     chatWithFinancialAssistant
 } from '../services/aiService.js';
 import Transaction from '../models/TransactionModel.js';
-import User from '../models/userModels.js';
 import Category from '../models/CategoryModel.js';
 
 /**
@@ -23,6 +22,7 @@ export const parseTransaction = async (req, res) => {
         const parsed = await parseTransactionText(text);
         return res.status(200).json({
             success: true,
+            userId: String(req.user._id),
             data: parsed
         });
     } catch (error) {
@@ -38,11 +38,11 @@ export const parseTransaction = async (req, res) => {
  */
 export const autoLogTransaction = async (req, res) => {
     try {
-        const { userId, text } = req.body;
-        if (!userId || typeof text !== 'string' || !text.trim()) {
+        const { text } = req.body;
+        if (typeof text !== 'string' || !text.trim()) {
             return res.status(400).json({
                 success: false,
-                message: 'userId and non-empty text are required.'
+                message: 'Non-empty text is required.'
             });
         }
 
@@ -57,7 +57,7 @@ export const autoLogTransaction = async (req, res) => {
         }
 
         const transaction = await Transaction.create({
-            userId,
+            userId: req.user._id,
             amount: parsed.amount,
             type: parsed.type || 'expense',
             category: parsed.category || 'Other',
@@ -90,22 +90,8 @@ export const autoLogTransaction = async (req, res) => {
  */
 export const getInsights = async (req, res) => {
     try {
-        const { userId } = req.body;
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: 'userId is required for insights.'
-            });
-        }
-
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found.'
-            });
-        }
-        const transactions = await Transaction.find({ userId }).sort({ date: -1 });
+        const user = req.user;
+        const transactions = await Transaction.find({ userId: user._id }).sort({ date: -1 });
 
         const insights = await generateSpendingInsights({ user, transactions });
 
@@ -126,7 +112,7 @@ export const getInsights = async (req, res) => {
  */
 export const chatAdvisor = async (req, res) => {
     try {
-        const { userId, message, history = [] } = req.body;
+        const { message, history = [] } = req.body;
         if (typeof message !== 'string' || !message.trim()) {
             return res.status(400).json({
                 success: false,
@@ -134,13 +120,8 @@ export const chatAdvisor = async (req, res) => {
             });
         }
 
-        let user = null;
-        let transactions = [];
-
-        if (userId) {
-            user = await User.findById(userId);
-            transactions = await Transaction.find({ userId }).sort({ date: -1 });
-        }
+        const user = req.user;
+        const transactions = await Transaction.find({ userId: user._id }).sort({ date: -1 });
 
         const result = await chatWithFinancialAssistant({
             user,

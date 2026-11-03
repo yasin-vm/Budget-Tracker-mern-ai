@@ -1,19 +1,20 @@
-import mongoose from 'mongoose'
-const userSchema = mongoose.Schema({
-    name:{ type:String , required : true},
-    dob:{ type:Date, required: true},
-    phone:{ type:Number, required: true,unique:true,minlength:10,  maxlength:10},
-    email: { type:String, unique:true},
-    username:{type:String, unique:true},
-    password:{ type:String, required :true, minlength:8},
+import mongoose from 'mongoose';
 
-    budgetLimit:{
-        type:Number,
-        default:20000
+const userSchema = new mongoose.Schema({
+    name: { type: String, required: true, trim: true },
+    dob: { type: Date },
+    phone: { type: Number, required: true, unique: true },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    username: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    password: { type: String, required: true, select: false },
+    role: { type: String, enum: ['admin', 'user'], default: 'user' },
+    budgetLimit: {
+        type: Number,
+        default: 20000,
+        min: 0
     }
-})
+});
 
-const User =mongoose.model('users',userSchema)
+const User = mongoose.model('users', userSchema);
 
 export default User;
-

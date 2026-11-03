@@ -5,7 +5,6 @@ export const addTransaction = async (req, res) => {
     try {
 
         const {
-            userId,
             amount,
             type,
             category,
@@ -13,17 +12,26 @@ export const addTransaction = async (req, res) => {
             date
         } = req.body;
 
+        if (!Number.isFinite(Number(amount)) || Number(amount) <= 0
+            || !["income", "expense"].includes(type)
+            || typeof category !== "string" || !category.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "A positive amount, valid type, and category are required"
+            });
+        }
+
         const transaction = await Transaction.create({
-            userId,
+            userId: req.user._id,
             amount,
             type,
-            category,
+            category: category.trim(),
             description,
             date
         });
         await Category.findOneAndUpdate(
-            { name: category },
-            { name: category },
+            { name: category.trim() },
+            { name: category.trim() },
             { upsert: true }
         );
 
@@ -47,10 +55,13 @@ export const getTransactions = async (req, res) => {
     try {
 
         const { userId } = req.params;
+        if (String(req.user._id) !== userId) {
+            return res.status(403).json({ success: false, message: "You can only access your own transactions" });
+        }
 
         const transactions =
             await Transaction.find({
-                userId: userId
+                userId: req.user._id
             }).sort({
                 _id: -1
             });
@@ -73,9 +84,13 @@ export const deleteTransaction = async (req, res) => {
 
     try {
 
-        await Transaction.findByIdAndDelete(
-            req.params.id
-        );
+        const transaction = await Transaction.findOneAndDelete({
+            _id: req.params.id,
+            userId: req.user._id
+        });
+        if (!transaction) {
+            return res.status(404).json({ success: false, message: "Transaction not found" });
+        }
 
         res.status(200).json({
             success: true,
@@ -102,16 +117,10 @@ export const updateTransaction = async (req, res) => {
         if (description !== undefined) updates.description = description;
         if (date !== undefined) updates.date = date;
 
-        const transaction =
-            await Transaction.findByIdAndUpdate(
-
-                req.params.id,
-
-                updates,
-
-                { returnDocument: "after", runValidators: true }
-
-            );
+        const transaction = await Transaction.findOneAndUpdate({
+            _id: req.params.id,
+            userId: req.user._id
+        }, updates, { returnDocument: "after", runValidators: true });
 
         if (!transaction) {
             return res.status(404).json({
@@ -122,8 +131,8 @@ export const updateTransaction = async (req, res) => {
 
         if (category !== undefined) {
             await Category.findOneAndUpdate(
-                { name: category },
-                { name: category },
+                { name: category.trim() },
+                { name: category.trim() },
                 { upsert: true }
             );
         }

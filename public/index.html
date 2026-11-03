@@ -10,7 +10,66 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="app-layout">
+    <section id="authScreen" class="auth-screen">
+        <div class="auth-card">
+            <div class="brand auth-brand">
+                <div class="brand-icon">⚡</div>
+                <div class="brand-text">
+                    <h2>BudgetAI</h2>
+                    <span>Smart Finance Tracker</span>
+                </div>
+            </div>
+            <h1>Welcome to your finances</h1>
+            <p class="auth-subtitle">Sign in to securely manage your budget and insights.</p>
+            <div class="auth-tabs" role="tablist" aria-label="Account access">
+                <button id="loginTab" class="auth-tab active" type="button" role="tab" aria-selected="true" aria-controls="loginPanel">Log In</button>
+                <button id="signupTab" class="auth-tab" type="button" role="tab" aria-selected="false" aria-controls="signupPanel">Sign Up</button>
+            </div>
+            <form id="loginPanel" class="auth-form" role="tabpanel">
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input id="loginUsername" class="form-input" name="username" autocomplete="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input id="loginPassword" class="form-input" name="password" type="password" autocomplete="current-password" required>
+                </div>
+                <p class="auth-hint">Default Admin: <strong>admin / Password123!</strong></p>
+                <p id="loginStatus" class="auth-status" role="status" aria-live="polite"></p>
+                <button id="loginSubmit" class="btn btn-primary auth-submit" type="submit">Log In</button>
+            </form>
+            <form id="signupPanel" class="auth-form hidden" role="tabpanel" aria-hidden="true">
+                <div class="form-group">
+                    <label for="signupName">Name</label>
+                    <input id="signupName" class="form-input" name="name" autocomplete="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupUsername">Username</label>
+                    <input id="signupUsername" class="form-input" name="username" autocomplete="username" minlength="3" maxlength="30" pattern="[A-Za-z0-9_]+" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupEmail">Email</label>
+                    <input id="signupEmail" class="form-input" name="email" type="email" autocomplete="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupPhone">Phone</label>
+                    <input id="signupPhone" class="form-input" name="phone" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" autocomplete="tel" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupPassword">Password</label>
+                    <input id="signupPassword" class="form-input" name="password" type="password" minlength="8" autocomplete="new-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="signupBudget">Monthly Budget Limit (₹)</label>
+                    <input id="signupBudget" class="form-input" name="budgetLimit" type="number" min="0" step="0.01" value="20000" required>
+                </div>
+                <p id="signupStatus" class="auth-status" role="status" aria-live="polite"></p>
+                <button id="signupSubmit" class="btn btn-primary auth-submit" type="submit">Create Account</button>
+            </form>
+        </div>
+    </section>
+
+    <div id="appLayout" class="app-layout hidden">
         <!-- Sidebar / User Profile -->
         <aside class="sidebar">
             <div class="brand">
@@ -24,19 +83,14 @@
             <div class="user-card" id="userCard">
                 <div class="avatar" id="userAvatar">U</div>
                 <div class="user-meta">
-                    <h3 id="userName">Demo User</h3>
-                    <p id="userEmail">demo@example.com</p>
+                    <h3 id="userName">User</h3>
+                    <p id="userEmail"></p>
+                    <p id="userBudget"></p>
                 </div>
             </div>
 
-            <div class="user-selector-box">
-                <label for="userSelect">Active Account:</label>
-                <select id="userSelect" class="form-input">
-                    <option value="">Loading users...</option>
-                </select>
-                <button id="quickCreateUserBtn" class="btn btn-secondary btn-sm">+ Create Demo User</button>
-                <p id="accountStatus" class="account-status" role="status" aria-live="polite"></p>
-            </div>
+            <button id="logoutBtn" class="btn btn-secondary">Log Out</button>
+            <p id="accountStatus" class="account-status" role="status" aria-live="polite"></p>
 
             <div class="ai-status-pill" id="aiStatusPill">
                 <span class="status-dot"></span>
@@ -188,7 +242,7 @@
                         </thead>
                         <tbody id="transactionList">
                             <tr>
-                                <td colspan="6" class="text-center text-muted">No transactions found. Add one above!</td>
+                                <td colspan="6" class="text-center text-muted">Log in to view your transactions.</td>
                             </tr>
                         </tbody>
                     </table>

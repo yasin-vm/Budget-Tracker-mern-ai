@@ -2,7 +2,7 @@ const API_BASE = '/api';
 
 // State
 let currentUser = null;
-let userList = [];
+let sessionToken = localStorage.getItem('budgetTrackerToken') || '';
 let transactions = [];
 let chatHistory = [];
 let parsedTransaction = null;
@@ -10,12 +10,18 @@ let editingTransactionId = null;
 let transactionLoadVersion = 0;
 
 // DOM Elements
-const userSelect = document.getElementById('userSelect');
+const authScreen = document.getElementById('authScreen');
+const appLayout = document.getElementById('appLayout');
+const loginPanel = document.getElementById('loginPanel');
+const signupPanel = document.getElementById('signupPanel');
+const loginStatus = document.getElementById('loginStatus');
+const signupStatus = document.getElementById('signupStatus');
 const userNameEl = document.getElementById('userName');
 const userEmailEl = document.getElementById('userEmail');
+const userBudgetEl = document.getElementById('userBudget');
 const userAvatarEl = document.getElementById('userAvatar');
 const accountStatus = document.getElementById('accountStatus');
-const quickCreateUserBtn = document.getElementById('quickCreateUserBtn');
+const logoutBtn = document.getElementById('logoutBtn');
 const refreshDataBtn = document.getElementById('refreshDataBtn');
 const aiStatusText = document.getElementById('aiStatusText');
 
@@ -51,9 +57,15 @@ const modalTitle = txModal.querySelector('.modal-header h3');
 const modalSubmitBtn = document.getElementById('modalSubmitBtn');
 
 async function requestJSON(url, options = {}) {
-    const response = await fetch(url, options);
+    const headers = new Headers(options.headers || {});
+    if (sessionToken) headers.set('Authorization', `Bearer ${sessionToken}`);
+    const response = await fetch(url, { ...options, headers });
     const json = await response.json();
     if (!response.ok || json.success === false) {
+        if (response.status === 401 && sessionToken && !url.endsWith('/login') && !url.endsWith('/signup')) {
+            clearSession();
+            showAuthScreen();
+        }
         throw new Error(json.message || `Request failed (${response.status})`);
     }
     return json;
@@ -72,18 +84,15 @@ function escapeHTML(value) {
 // Initialization
 document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
-    await loadUsers();
+    await restoreSession();
 });
 
 function setupEventListeners() {
-    userSelect.addEventListener('change', (e) => {
-        const found = userList.find(u => u._id === e.target.value);
-        if (found) {
-            setCurrentUser(found);
-        }
-    });
-
-    quickCreateUserBtn.addEventListener('click', createDemoUser);
+    document.getElementById('loginTab').addEventListener('click', () => showAuthTab('login'));
+    document.getElementById('signupTab').addEventListener('click', () => showAuthTab('signup'));
+    loginPanel.addEventListener('submit', handleLogin);
+    signupPanel.addEventListener('submit', handleSignup);
+    logoutBtn.addEventListener('click', handleLogout);
     refreshDataBtn.addEventListener('click', () => loadTransactions(currentUser?._id));
 
     // AI Transaction Logging
@@ -117,110 +126,133 @@ function setupEventListeners() {
     aiParseResult.addEventListener('click', handleParsedTransactionAction);
 }
 
-// ----------------- USER MANAGEMENT -----------------
-async function loadUsers() {
-    try {
-        const json = await requestJSON(`${API_BASE}/users`);
-        userList = Array.isArray(json.data) ? json.data : [];
-        renderUserDropdown();
-        if (userList.length > 0) {
-            setCurrentUser(userList[0]);
-        } else {
-            setCurrentUser(null);
-            accountStatus.textContent = 'No accounts yet. Create a demo account to get started.';
-        }
-    } catch (err) {
-        setCurrentUser(null);
-        accountStatus.textContent = `Unable to load accounts: ${err.message}`;
-    }
+function showAuthTab(tab) {
+    const isLogin = tab === 'login';
+    document.getElementById('loginTab').classList.toggle('active', isLogin);
+    document.getElementById('signupTab').classList.toggle('active', !isLogin);
+    document.getElementById('loginTab').setAttribute('aria-selected', String(isLogin));
+    document.getElementById('signupTab').setAttribute('aria-selected', String(!isLogin));
+    loginPanel.classList.toggle('hidden', !isLogin);
+    signupPanel.classList.toggle('hidden', isLogin);
+    loginPanel.setAttribute('aria-hidden', String(!isLogin));
+    signupPanel.setAttribute('aria-hidden', String(isLogin));
+    loginStatus.textContent = '';
+    signupStatus.textContent = '';
 }
 
-function renderUserDropdown() {
-    userSelect.replaceChildren();
-    if (userList.length === 0) {
-        userSelect.add(new Option('No accounts available', ''));
-        userSelect.disabled = true;
+function showAuthScreen() {
+    authScreen.classList.remove('hidden');
+    appLayout.classList.add('hidden');
+    currentUser = null;
+    transactionLoadVersion += 1;
+    transactions = [];
+    renderTransactions();
+    calculateStats();
+}
+
+function clearSession() {
+    sessionToken = '';
+    currentUser = null;
+    localStorage.removeItem('budgetTrackerToken');
+    localStorage.removeItem('budgetTrackerUser');
+}
+
+function saveSession(token, user) {
+    sessionToken = token;
+    currentUser = user;
+    localStorage.setItem('budgetTrackerToken', token);
+    localStorage.setItem('budgetTrackerUser', JSON.stringify(user));
+    showDashboard(user);
+}
+
+async function restoreSession() {
+    if (!sessionToken) {
+        showAuthScreen();
         return;
     }
-    userSelect.disabled = false;
-    userList.forEach(user => {
-        userSelect.add(new Option(`${user.name || 'User'} (@${user.username || 'user'})`, user._id));
-    });
-}
-
-function setCurrentUser(user) {
-    currentUser = user;
-    const hasUser = Boolean(user);
-    userSelect.value = user?._id || '';
-    userNameEl.textContent = user?.name || 'No active account';
-    userEmailEl.textContent = user?.email || 'Create an account to begin';
-    userAvatarEl.textContent = (user?.name || 'U').charAt(0).toUpperCase();
-    budgetLimitValEl.textContent = `₹${(user?.budgetLimit ?? 20000).toLocaleString('en-IN')}`;
-    refreshDataBtn.disabled = !hasUser;
-    openNewTxModal.disabled = !hasUser;
-    aiAutoLogBtn.disabled = !hasUser;
-    generateInsightsBtn.disabled = !hasUser;
-    if (hasUser) {
-        accountStatus.textContent = '';
-        loadTransactions(user._id);
-    } else {
-        transactionLoadVersion += 1;
-        transactions = [];
-        renderTransactions();
-        calculateStats();
-    }
-}
-
-async function createDemoUser() {
-    if (quickCreateUserBtn.disabled) return;
-    quickCreateUserBtn.disabled = true;
-    accountStatus.textContent = 'Creating your account...';
-    const randomSuffix = Math.floor(Math.random() * 9000 + 1000);
-    const demoPayload = {
-        name: `Candidate Demo ${randomSuffix}`,
-        dob: '2000-01-01',
-        phone: 9000000000 + randomSuffix,
-        email: `candidate${randomSuffix}@interview.com`,
-        username: `candidate_${randomSuffix}`,
-        password: 'Password123!',
-        budgetLimit: 25000
-    };
 
     try {
-        const json = await requestJSON(`${API_BASE}/signup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(demoPayload)
-        });
-        userList.push(json.data);
-        renderUserDropdown();
-        setCurrentUser(json.data);
-        accountStatus.textContent = 'Account created. Adding a few sample transactions...';
-        await seedSampleTransactions(json.data._id);
-        accountStatus.textContent = 'Demo account is ready.';
+        const { data } = await requestJSON(`${API_BASE}/profile`);
+        saveSession(sessionToken, data);
     } catch (err) {
-        accountStatus.textContent = `Could not create account: ${err.message}`;
-    } finally {
-        quickCreateUserBtn.disabled = false;
+        clearSession();
+        showAuthScreen();
     }
 }
 
-async function seedSampleTransactions(userId) {
-    const samples = [
-        { userId, type: 'income', amount: 45000, category: 'Salary', description: 'Monthly Tech Internship Stipend', date: new Date() },
-        { userId, type: 'expense', amount: 3200, category: 'Food', description: 'Grocery supermarket haul', date: new Date() },
-        { userId, type: 'expense', amount: 850, category: 'Transportation', description: 'Uber rides for client meeting', date: new Date() },
-        { userId, type: 'expense', amount: 1499, category: 'Entertainment', description: 'Tech conference & streaming subs', date: new Date() }
-    ];
+function showDashboard(user) {
+    currentUser = user;
+    userNameEl.textContent = user.name || 'User';
+    userEmailEl.textContent = user.email || '';
+    userBudgetEl.textContent = `Monthly budget: ₹${Number(user.budgetLimit ?? 20000).toLocaleString('en-IN')}`;
+    userAvatarEl.textContent = (user.name || 'U').charAt(0).toUpperCase();
+    budgetLimitValEl.textContent = `₹${Number(user.budgetLimit ?? 20000).toLocaleString('en-IN')}`;
+    accountStatus.textContent = '';
+    authScreen.classList.add('hidden');
+    appLayout.classList.remove('hidden');
+    loadTransactions(user._id);
+}
 
-    for (const sample of samples) {
-        await requestJSON(`${API_BASE}/transaction`, {
+async function handleLogin(event) {
+    event.preventDefault();
+    const submitButton = document.getElementById('loginSubmit');
+    submitButton.disabled = true;
+    loginStatus.textContent = 'Signing in...';
+    try {
+        const { data, token } = await requestJSON(`${API_BASE}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(sample)
+            body: JSON.stringify({
+                username: document.getElementById('loginUsername').value.trim(),
+                password: document.getElementById('loginPassword').value
+            })
         });
+        saveSession(token, data);
+        loginPanel.reset();
+    } catch (err) {
+        loginStatus.textContent = err.message;
+    } finally {
+        submitButton.disabled = false;
     }
-    await loadTransactions(userId);
+}
+
+async function handleSignup(event) {
+    event.preventDefault();
+    const submitButton = document.getElementById('signupSubmit');
+    submitButton.disabled = true;
+    signupStatus.textContent = 'Creating your account...';
+    try {
+        const { data, token } = await requestJSON(`${API_BASE}/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: document.getElementById('signupName').value.trim(),
+                username: document.getElementById('signupUsername').value.trim(),
+                email: document.getElementById('signupEmail').value.trim(),
+                phone: document.getElementById('signupPhone').value.trim(),
+                password: document.getElementById('signupPassword').value,
+                budgetLimit: document.getElementById('signupBudget').value
+            })
+        });
+        saveSession(token, data);
+        signupPanel.reset();
+    } catch (err) {
+        signupStatus.textContent = err.message;
+    } finally {
+        submitButton.disabled = false;
+    }
+}
+
+async function handleLogout() {
+    try {
+        await requestJSON(`${API_BASE}/logout`, { method: 'POST' });
+    } catch (err) {
+        accountStatus.textContent = `Session ended locally; server logout failed: ${err.message}`;
+    } finally {
+        clearSession();
+        showAuthScreen();
+        showAuthTab('login');
+    }
 }
 
 // ----------------- TRANSACTIONS -----------------
@@ -281,7 +313,7 @@ function renderTransactions() {
     if (!transactions.length) {
         transactionList.innerHTML = `
             <tr>
-                <td colspan="6" class="text-center text-muted">${currentUser ? 'No transactions found. Add one above!' : 'Create or select an account to see transactions.'}</td>
+                <td colspan="6" class="text-center text-muted">${currentUser ? 'No transactions found. Add one above!' : 'Log in to view your transactions.'}</td>
             </tr>
         `;
         return;
@@ -385,7 +417,7 @@ async function handleAiParsePreview() {
         const json = await requestJSON(`${API_BASE}/ai/parse`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
+            body: JSON.stringify({ userId: currentUser?._id, text })
         });
         parsedTransaction = json.data;
         const d = parsedTransaction;
@@ -409,7 +441,7 @@ async function handleAiParsePreview() {
 async function handleParsedTransactionAction(event) {
     if (!event.target.closest('button[data-action="save-parsed"]') || !parsedTransaction) return;
     if (!currentUser) {
-        accountStatus.textContent = 'Create or select an account before saving a transaction.';
+        accountStatus.textContent = 'Log in before saving a transaction.';
         return;
     }
     try {

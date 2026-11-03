@@ -1,139 +1,118 @@
-import User from "../models/userModels.js";
+import User from '../models/userModels.js';
+import Session from '../models/SessionModel.js';
+import { hashPassword, issueSession, publicUser, verifyPassword } from '../services/authService.js';
+
+function respondWithSession(res, user, status = 200, message = 'Login successful') {
+    return issueSession(user._id).then(({ token, expiresAt }) => res.status(status).json({
+        success: true,
+        message,
+        data: publicUser(user),
+        token,
+        expiresAt
+    }));
+}
 
 export const signup = async (req, res) => {
     try {
-        const { name, dob, phone, email, username, password, budgetLimit } = req.body;
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ success: false, message: 'user already exist' });
-        }
-        if (!name || !dob) {
-            return res.status(400).json({ success: false, message: 'Name and date of birth are required' });
+        const { name, username, email, phone, password, budgetLimit } = req.body;
+        const normalizedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
+        const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+        const phoneText = String(phone ?? '');
+        const parsedBudget = budgetLimit === undefined || budgetLimit === '' ? 20000 : Number(budgetLimit);
+
+        if (typeof name !== 'string' || !name.trim()
+            || !/^[a-z0-9_]{3,30}$/.test(normalizedUsername)
+            || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+            || !/^\d{10}$/.test(phoneText)
+            || typeof password !== 'string' || password.length < 8
+            || !Number.isFinite(parsedBudget) || parsedBudget < 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Enter a name, username (3-30 letters/numbers/underscores), valid email, 10-digit phone, password (8+ characters), and non-negative budget.'
+            });
         }
 
         const user = await User.create({
-            name,
-            dob,
-            phone,
-            email,
-            username,
-            password,
-            budgetLimit: budgetLimit || 20000
+            name: name.trim(),
+            username: normalizedUsername,
+            email: normalizedEmail,
+            phone: Number(phoneText),
+            password: await hashPassword(password),
+            budgetLimit: parsedBudget,
+            role: 'user'
         });
-        res.status(201).json({ success: true, message: 'signup success', data: user });
+
+        return await respondWithSession(res, user, 201, 'Account created successfully');
     } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        if (error.code === 11000) {
+            const duplicateField = Object.keys(error.keyPattern || {})[0];
+            return res.status(409).json({
+                success: false,
+                message: `An account with that ${duplicateField || 'username, email, or phone'} already exists.`
+            });
+        }
+        console.error('Signup failed:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to create account.' });
     }
 };
 
 export const login = async (req, res) => {
     try {
-        const { username, password } = req.body;
-        const user = await User.findOne({ username });
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
+        const username = typeof req.body.username === 'string' ? req.body.username.trim().toLowerCase() : '';
+        const password = req.body.password;
+        if (!username || typeof password !== 'string' || !password) {
+            return res.status(400).json({ success: false, message: 'Username and password are required.' });
         }
 
-        if (user.password !== password) {
-            return res.status(401).json({
-                success: false,
-                message: "Wrong password"
-            });
+        const user = await User.findOne({ username }).select('+password');
+        if (!user || !(await verifyPassword(password, user.password))) {
+            return res.status(401).json({ success: false, message: 'Invalid username or password.' });
         }
 
-        res.status(200).json({
-            success: true,
-            message: "Login successful",
-            data: user
-        });
+        if (!user.password.startsWith('scrypt$')) {
+            user.password = await hashPassword(password);
+            await user.save();
+        }
+        return await respondWithSession(res, user);
     } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        console.error('Login failed:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to log in.' });
     }
 };
 
-export const getProfile = async (req, res) => {
+export const getProfile = (req, res) => res.status(200).json({
+    success: true,
+    data: publicUser(req.user)
+});
+
+export const logout = async (req, res) => {
     try {
-        const userId = req.params.userId || req.query.userId;
-        const user = await User.findById(userId);
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found"
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            data: user
-        });
+        await Session.deleteOne({ _id: req.sessionId });
+        return res.status(200).json({ success: true, message: 'Logged out successfully.' });
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
-    }
-};
-
-export const getAllUsers = async (req, res) => {
-    try {
-        const users = await User.find({}).select('-password');
-        res.status(200).json({
-            success: true,
-            data: users
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        console.error('Logout failed:', error.message);
+        return res.status(500).json({ success: false, message: 'Unable to log out.' });
     }
 };
 
 export const updateProfile = async (req, res) => {
     try {
-        const {
-            _id,
-            name,
-            dob,
-            email,
-            username,
-            phone,
-            budgetLimit
-        } = req.body;
-        const user = await User.findByIdAndUpdate(
-            _id,
-            {
-                name,
-                dob,
-                email,
-                username,
-                phone,
-                budgetLimit
-            },
-            { returnDocument: 'after' }
-        );
+        const { name, email, phone, budgetLimit } = req.body;
+        const updates = {};
+        if (name !== undefined) updates.name = name;
+        if (email !== undefined) updates.email = email;
+        if (phone !== undefined) updates.phone = phone;
+        if (budgetLimit !== undefined) updates.budgetLimit = budgetLimit;
 
-        res.status(200).json({
-            success: true,
-            data: user
+        const user = await User.findByIdAndUpdate(req.user._id, updates, {
+            returnDocument: 'after',
+            runValidators: true
         });
+        return res.status(200).json({ success: true, data: publicUser(user) });
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        if (error.code === 11000) {
+            return res.status(409).json({ success: false, message: 'That email or phone is already in use.' });
+        }
+        return res.status(400).json({ success: false, message: error.message });
     }
 };
