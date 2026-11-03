@@ -35,14 +35,26 @@ budget tracker on MERN/
 └── README.md
 ```
 
-Requirements: Node.js/npm, Python (the Windows `py` launcher), and a configured MongoDB connection in `backend/.env`.
+Requirements: Git, Node.js/npm, Python (the Windows `py` launcher), and a MongoDB connection.
 
-From the project root, install the root development tool once and start both services:
+For a fresh checkout of this frontend repository, clone the separate backend repository into `backend/`:
+
+```text
+git clone https://github.com/yasin-vm/Budget-Tracker-mern-ai.git
+cd "Budget-Tracker-mern-ai"
+git clone https://github.com/yasin-vm/Budget-Tracker-ai-backend.git backend
+```
+
+In the project root, install the frontend runner and backend dependencies. Create and configure `backend/.env` using its example file before starting the API:
 
 ```powershell
 npm install
+npm --prefix backend install
+Copy-Item backend/.env.example backend/.env
 npm start
 ```
+
+Set `MONGO_URI` in `backend/.env`; set `GEMINI_API_KEY` to enable Gemini features. The `.env` file is local and must not be committed.
 
 Open the frontend at `http://localhost:5500`. The backend API runs at `http://localhost:3000`; `http://localhost:3000/api` lists its endpoints. Keep the terminal running while using the app and press `Ctrl+C` to stop both services.
 
