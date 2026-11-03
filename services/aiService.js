@@ -201,7 +201,7 @@ Return ONLY a valid JSON object without markdown fences, with these exact keys:
 }`;
 
             const response = await client.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3.8-flash',
                 contents: prompt,
             });
 
@@ -212,7 +212,7 @@ Return ONLY a valid JSON object without markdown fences, with these exact keys:
             return {
                 stats: summaryStats,
                 aiAnalysis: aiData,
-                engine: 'gemini-2.5-flash'
+                engine: 'gemini-3.8-flash'
             };
         } catch (error) {
             console.warn('Gemini insights generation failed, using statistical fallback:', error.message);
@@ -313,13 +313,13 @@ Answer the user's questions clearly, giving specific figures based on their fina
             const fullPrompt = `${systemContext}\n\nConversation History:\n${historyText}\nUser: ${userMessage}\nAssistant:`;
 
             const response = await client.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3.8-flash',
                 contents: fullPrompt,
             });
 
             return {
                 reply: response.text ? response.text.trim() : 'I am here to help you manage your budget!',
-                engine: 'gemini-2.5-flash'
+                engine: 'gemini-3.8-flash'
             };
         } catch (error) {
             console.warn('Gemini chat failed, using fallback responder:', error.message);
