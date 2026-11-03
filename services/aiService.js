@@ -17,34 +17,44 @@ function getAIClient() {
     return aiClient;
 }
 
-function isTemporaryCapacityError(error) {
+function isTemporaryGeminiError(error) {
     const status = Number(error?.status ?? error?.response?.status ?? error?.error?.code);
-    const code = String(error?.code ?? error?.status ?? '').toUpperCase();
+    const code = String(error?.code ?? error?.cause?.code ?? error?.status ?? error?.error?.status ?? '').toUpperCase();
     return status === 503 || status === 429
         || code === 'UNAVAILABLE'
         || code === 'RESOURCE_EXHAUSTED'
+        || ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET']
+            .includes(code)
+        || (error?.name === 'TypeError' && /fetch failed/i.test(String(error?.message || '')))
         || /\b(?:503|429)\b/.test(String(error?.message || ''));
 }
 
-export async function generateContentWithFallback(client, contents) {
+export async function callGemini(contents, options = {}, client = getAIClient()) {
+    if (!client) return null;
+
+    const callStartedAt = Date.now();
+    const generate = model => client.models.generateContent({
+        ...options,
+        model,
+        contents
+    });
+
     try {
-        return {
-            response: await client.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents
-            }),
-            model: 'gemini-2.5-flash'
-        };
+        const response = await generate('gemini-3.1-flash-lite');
+        console.info(`[AI Engine: gemini-3.1-flash-lite] Generated response in ${Date.now() - callStartedAt}ms`);
+        return { response, model: 'gemini-3.1-flash-lite' };
     } catch (error) {
-        if (!isTemporaryCapacityError(error)) throw error;
-        console.warn('Gemini 2.5 Flash is temporarily at capacity; retrying with gemini-2.0-flash.');
-        return {
-            response: await client.models.generateContent({
-                model: 'gemini-2.0-flash',
-                contents
-            }),
-            model: 'gemini-2.0-flash'
-        };
+        console.error('Gemini gemini-3.1-flash-lite request failed:', error.message);
+        if (!isTemporaryGeminiError(error)) throw error;
+
+        try {
+            const response = await generate('gemini-2.5-pro');
+            console.info(`[AI Engine: gemini-2.5-pro] Generated response in ${Date.now() - callStartedAt}ms`);
+            return { response, model: 'gemini-2.5-pro' };
+        } catch (fallbackError) {
+            console.error('Gemini gemini-2.5-pro fallback request failed:', fallbackError.message);
+            throw fallbackError;
+        }
     }
 }
 
@@ -106,11 +116,8 @@ function ruleBasedParseTransaction(text) {
  * Parse natural language text into a structured transaction
  */
 export async function parseTransactionText(text) {
-    const client = getAIClient();
-    
-    if (client) {
-        try {
-            const prompt = `You are a financial transaction parser.
+    try {
+        const prompt = `You are a financial transaction parser.
 Extract the transaction details from the following natural language text:
 "${text}"
 
@@ -123,7 +130,9 @@ Respond ONLY with a valid JSON object matching this schema, without any markdown
   "date": string (ISO 8601 date, default to current date if unspecified)
 }`;
 
-            const { response } = await generateContentWithFallback(client, prompt);
+        const result = await callGemini(prompt);
+        if (result) {
+            const { response } = result;
 
             const rawText = response.text ? response.text.trim() : '';
             const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
@@ -147,9 +156,9 @@ Respond ONLY with a valid JSON object matching this schema, without any markdown
                 date: Number.isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString(),
                 source: 'gemini-ai'
             };
-        } catch (error) {
-            console.warn('Gemini parser failed, falling back to rule-based engine:', error.message);
         }
+    } catch (error) {
+        console.error('Gemini parser failed, falling back to rule-based engine:', error.message);
     }
 
     const fallbackResult = ruleBasedParseTransaction(text);
@@ -200,10 +209,8 @@ export async function generateSpendingInsights({ user, transactions }) {
         topCategories
     };
 
-    const client = getAIClient();
-    if (client) {
-        try {
-            const prompt = `You are an expert personal financial advisor and AI budget analyst.
+    try {
+        const prompt = `You are an expert personal financial advisor and AI budget analyst.
 Analyze the following user's financial profile and recent transactions:
 
 User Name: ${user?.name || 'User'}
@@ -228,7 +235,9 @@ Return ONLY a valid JSON object without markdown fences, with these exact keys:
   "forecast": string (prediction for the remainder of the month)
 }`;
 
-            const { response, model } = await generateContentWithFallback(client, prompt);
+        const result = await callGemini(prompt);
+        if (result) {
+            const { response, model } = result;
 
             const rawText = response.text ? response.text.trim() : '';
             const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
@@ -239,9 +248,9 @@ Return ONLY a valid JSON object without markdown fences, with these exact keys:
                 aiAnalysis: aiData,
                 engine: model
             };
-        } catch (error) {
-            console.warn('Gemini insights generation failed, using statistical fallback:', error.message);
         }
+    } catch (error) {
+        console.error('Gemini insights generation failed, using statistical fallback:', error.message);
     }
 
     // Resilient fallback logic
@@ -315,10 +324,8 @@ export async function chatWithFinancialAssistant({ user, transactions, userMessa
             categoryTotals[cat] = (categoryTotals[cat] || 0) + Number(t.amount || 0);
         });
 
-    const client = getAIClient();
-    if (client) {
-        try {
-            const systemContext = `You are a helpful, professional, and friendly AI Financial Assistant embedded inside a MERN Budget Tracker.
+    try {
+        const systemContext = `You are a helpful, professional, and friendly AI Financial Assistant embedded inside a MERN Budget Tracker.
 User Details:
 - Name: ${user?.name || 'User'}
 - Base Monthly Salary: ₹${salary}
@@ -327,25 +334,27 @@ User Details:
 - Total Expenses: ₹${totalExpense}
 - Current Net Savings/Balance: ₹${balance}
 - Category Expenses: ${JSON.stringify(categoryTotals)}
-- Recent Transactions: ${JSON.stringify(transactions.slice(0, 10).map(t => ({ amount: t.amount, type: t.type, category: t.category, desc: t.description, date: t.date })))}
+- All Matching Transactions: ${JSON.stringify(transactions.map(t => ({ amount: t.amount, type: t.type, category: t.category, description: t.description, date: t.date })))}
 
-Answer the user's questions clearly, giving specific figures based on their financial data when asked. Keep answers concise, actionable, and encouraging.`;
+Answer the user's exact question directly, using only the supplied MongoDB transaction and profile data. If asked to list small transactions, identify matching records with dates and amounts. If asked for a daily savings plan (such as ₹1,000/day), calculate the target over the requested period and compare it with salary, expenses, and remaining budget. If asked for a budget breakdown, give clear category allocations based on the user's actual salary and budget. Never invent transactions or figures. Format responses as concise bullet points; state when the data is insufficient.`;
 
-            const historyText = conversationHistory
-                .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
-                .join('\n');
+        const historyText = conversationHistory
+            .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+            .join('\n');
 
-            const fullPrompt = `${systemContext}\n\nConversation History:\n${historyText}\nUser: ${userMessage}\nAssistant:`;
+        const fullPrompt = `${systemContext}\n\nConversation History:\n${historyText}\nUser: ${userMessage}\nAssistant:`;
 
-            const { response, model } = await generateContentWithFallback(client, fullPrompt);
+        const result = await callGemini(fullPrompt);
+        if (result) {
+            const { response, model } = result;
 
             return {
                 reply: response.text ? response.text.trim() : 'I am here to help you manage your budget!',
                 engine: model
             };
-        } catch (error) {
-            console.warn('Gemini chat failed, using fallback responder:', error.message);
         }
+    } catch (error) {
+        console.error('Gemini chat failed, using fallback responder:', error.message);
     }
 
     // Rule-based conversational fallback
