@@ -1,24 +1,34 @@
-import express from 'express'
-import router from './router/router.js'
-import {log}  from 'node:console'
-import cors from 'cors'
-import connectDB from './db/Db.js'
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import router from './router/router.js';
+import connectDB from './db/db.js';
 
-const app=express()
-const PORT=3000
-connectDB()
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-app.use(cors())
-app.use(express.json())
+// Connect Database
+connectDB();
 
-app.use('/api',router)
-app.get('/api',(req,res)=>{
-     res.send('accound api')
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
 
-})
-app.listen(PORT,()=>{
-    console.log('runiing at http://localhost:'+PORT+'/api');
-    
+// Routes
+app.use('/api', router);
 
-})
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        message: 'Budget Tracker & AI Assistant API is healthy',
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.listen(PORT, () => {
+    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`API endpoints at http://localhost:${PORT}/api`);
+});
+
 export default app;

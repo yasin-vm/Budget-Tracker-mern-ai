@@ -2,45 +2,38 @@ import User from "../models/userModels.js";
 
 export const signup = async (req, res) => {
     try {
-        const { name, dob, phone, email, username, password } = req.body;
-        const existingUser = await User.findOne({ email })
+        const { name, dob, phone, email, username, password, budgetLimit } = req.body;
+        const existingUser = await User.findOne({ email });
         if (existingUser) {
-            res.status(400).json({ success: false, message: 'user already exist' })
-            return
+            return res.status(400).json({ success: false, message: 'user already exist' });
         }
         if (!name || !dob) {
-            res.send('')
+            return res.status(400).json({ success: false, message: 'Name and date of birth are required' });
         }
 
-
-
-        const user = await User.create({ name, dob, phone, email, username, password })
-        console.log(user);
-        res.status(201).json({ success: true, message: 'signup success', data: user })
+        const user = await User.create({
+            name,
+            dob,
+            phone,
+            email,
+            username,
+            password,
+            budgetLimit: budgetLimit || 20000
+        });
+        res.status(201).json({ success: true, message: 'signup success', data: user });
     } catch (error) {
-        console.log(error);
-
+        console.error(error);
         res.status(500).json({
             success: false,
             message: error.message
         });
     }
-
-}
-
-
+};
 
 export const login = async (req, res) => {
-
     try {
-
         const { username, password } = req.body;
-
-        console.log("Received username:", username);
-
         const user = await User.findOne({ username });
-
-        console.log("Found user:", user);
 
         if (!user) {
             return res.status(404).json({
@@ -61,46 +54,56 @@ export const login = async (req, res) => {
             message: "Login successful",
             data: user
         });
-
     } catch (error) {
-
-        console.log(error);
-
+        console.error(error);
         res.status(500).json({
             success: false,
             message: error.message
         });
     }
-}
+};
 
-//to retrive data from sign up details toward to profile
 export const getProfile = async (req, res) => {
-
     try {
-
-        const { userId } = req.params;
-
+        const userId = req.params.userId || req.query.userId;
         const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+        }
 
         res.status(200).json({
             success: true,
             data: user
         });
-
     } catch (error) {
-
         res.status(500).json({
             success: false,
             message: error.message
         });
     }
-}
+};
 
-//updating current profile and database
-export const updateProfile = async (req, res) => {
-
+export const getAllUsers = async (req, res) => {
     try {
+        const users = await User.find({}).select('-password');
+        res.status(200).json({
+            success: true,
+            data: users
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
 
+export const updateProfile = async (req, res) => {
+    try {
         const {
             _id,
             name,
@@ -127,14 +130,10 @@ export const updateProfile = async (req, res) => {
             success: true,
             data: user
         });
-        console.log("Updated User:", user);
-
     } catch (error) {
-
         res.status(500).json({
             success: false,
             message: error.message
         });
     }
-}
-
+};

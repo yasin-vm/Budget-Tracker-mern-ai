@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Budget Tracker & Financial Advisor</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar / User Profile -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">⚡</div>
+                <div class="brand-text">
+                    <h2>BudgetAI</h2>
+                    <span>Smart Finance Tracker</span>
+                </div>
+            </div>
+
+            <div class="user-card" id="userCard">
+                <div class="avatar" id="userAvatar">U</div>
+                <div class="user-meta">
+                    <h3 id="userName">Demo User</h3>
+                    <p id="userEmail">demo@example.com</p>
+                </div>
+            </div>
+
+            <div class="user-selector-box">
+                <label for="userSelect">Active Account:</label>
+                <select id="userSelect" class="form-input">
+                    <option value="">Loading users...</option>
+                </select>
+                <button id="quickCreateUserBtn" class="btn btn-secondary btn-sm">+ Create Demo User</button>
+            </div>
+
+            <div class="ai-status-pill" id="aiStatusPill">
+                <span class="status-dot"></span>
+                <span id="aiStatusText">AI Engine: Ready</span>
+            </div>
+
+            <nav class="nav-links">
+                <a href="#overview" class="nav-link active">📊 Dashboard</a>
+                <a href="#ai-insights" class="nav-link">🧠 AI Insights</a>
+                <a href="#ai-assistant" class="nav-link">💬 AI Financial Advisor</a>
+                <a href="#transactions" class="nav-link">💸 Transactions</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-header">
+                <div>
+                    <h1>Financial Dashboard</h1>
+                    <p class="subtitle">AI-assisted personal budget tracking & predictive analytics</p>
+                </div>
+                <div class="header-actions">
+                    <button id="refreshDataBtn" class="btn btn-secondary">🔄 Refresh</button>
+                    <button id="openNewTxModal" class="btn btn-primary">+ Manual Entry</button>
+                </div>
+            </header>
+
+            <!-- Metrics Summary Cards -->
+            <section class="stats-grid" id="overview">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span>Total Income</span>
+                        <span class="stat-icon income-icon">↓</span>
+                    </div>
+                    <div class="stat-value text-green" id="totalIncome">₹0.00</div>
+                    <span class="stat-hint">All earnings recorded</span>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span>Total Expenses</span>
+                        <span class="stat-icon expense-icon">↑</span>
+                    </div>
+                    <div class="stat-value text-red" id="totalExpenses">₹0.00</div>
+                    <span class="stat-hint">Outflow this period</span>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span>Net Balance</span>
+                        <span class="stat-icon balance-icon">💰</span>
+                    </div>
+                    <div class="stat-value text-primary" id="netBalance">₹0.00</div>
+                    <span class="stat-hint" id="balanceHealth">In good standing</span>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span>Budget Cap</span>
+                        <span class="stat-icon budget-icon">🎯</span>
+                    </div>
+                    <div class="stat-value" id="budgetLimitVal">₹20,000</div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="budgetProgressBar" style="width: 0%;"></div>
+                    </div>
+                    <span class="stat-hint" id="budgetUtilText">0% of limit used</span>
+                </div>
+            </section>
+
+            <!-- AI Quick Action Banner: Natural Language Transaction Parser -->
+            <section class="ai-banner">
+                <div class="ai-banner-header">
+                    <div class="ai-sparkle">✨</div>
+                    <div>
+                        <h3>AI Natural Language Expense Logger</h3>
+                        <p>Type spending in plain English (e.g. <em>"Spent ₹450 on pizza with team yesterday"</em> or <em>"Received 50000 salary"</em>)</p>
+                    </div>
+                </div>
+                <div class="ai-input-group">
+                    <input type="text" id="aiInputText" placeholder="e.g. Paid 650 for petrol at Shell pump" class="ai-text-input">
+                    <button id="aiAutoLogBtn" class="btn btn-ai">✨ Auto-Log with AI</button>
+                    <button id="aiParseOnlyBtn" class="btn btn-secondary">Preview Parse</button>
+                </div>
+                <div id="aiParseResult" class="ai-parse-preview hidden"></div>
+            </section>
+
+            <!-- Grid: AI Insights & AI Chat Advisor -->
+            <section class="ai-features-grid">
+                <!-- AI Insights Card -->
+                <div class="card ai-insights-card" id="ai-insights">
+                    <div class="card-header">
+                        <div>
+                            <h2>🧠 AI Financial Health & Insights</h2>
+                            <p class="card-subtitle">Automated diagnostics & budget recommendations</p>
+                        </div>
+                        <button id="generateInsightsBtn" class="btn btn-secondary btn-sm">Analyze Now</button>
+                    </div>
+                    <div class="card-body" id="insightsContent">
+                        <div class="empty-state">
+                            <p>Click <strong>"Analyze Now"</strong> to let AI evaluate your budget and spending patterns.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Financial Chatbot -->
+                <div class="card ai-chat-card" id="ai-assistant">
+                    <div class="card-header">
+                        <div>
+                            <h2>💬 Ask Your AI Financial Advisor</h2>
+                            <p class="card-subtitle">Ask questions about your budget, savings, or spending</p>
+                        </div>
+                        <button id="clearChatBtn" class="btn btn-text btn-sm">Clear</button>
+                    </div>
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="chat-bubble assistant">
+                            Hello! I'm your AI Budget Advisor. I have live access to your spending records. Ask me anything like:
+                            <br>• <em>"How much have I spent on food?"</em>
+                            <br>• <em>"Can I afford an ₹8,000 purchase?"</em>
+                            <br>• <em>"Give me 3 tips to stay under my budget limit."</em>
+                        </div>
+                    </div>
+                    <form id="chatForm" class="chat-input-row">
+                        <input type="text" id="chatInput" placeholder="Ask financial advisor..." class="chat-input" required autocomplete="off">
+                        <button type="submit" class="btn btn-primary" id="chatSendBtn">Send</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Recent Transactions Table -->
+            <section class="card" id="transactions">
+                <div class="card-header">
+                    <div>
+                        <h2>Transactions History</h2>
+                        <p class="card-subtitle">All tracked expenses and income records</p>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="tx-table">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th>Date</th>
+                                <th class="text-right">Amount</th>
+                                <th class="text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactionList">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">No transactions found. Add one above!</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Manual Entry Modal -->
+    <div id="txModal" class="modal hidden">
+        <div class="modal-backdrop" id="modalBackdrop"></div>
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Add New Transaction</h3>
+                <button id="closeModalBtn" class="btn-close">&times;</button>
+            </div>
+            <form id="manualTxForm" class="modal-body">
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="modalType" class="form-input" required>
+                        <option value="expense">Expense</option>
+                        <option value="income">Income</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Amount (₹)</label>
+                    <input type="number" step="0.01" id="modalAmount" class="form-input" placeholder="e.g. 500" required>
+                </div>
+                <div class="form-group">
+                    <label>Category</label>
+                    <input type="text" id="modalCategory" class="form-input" placeholder="e.g. Food, Travel, Utilities" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" id="modalDesc" class="form-input" placeholder="e.g. Grocery store run">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" id="cancelModalBtn" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Transaction</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
