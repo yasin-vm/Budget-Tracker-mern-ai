@@ -30,14 +30,14 @@ export async function generateContentWithFallback(client, contents) {
     try {
         return {
             response: await client.models.generateContent({
-                model: 'gemini-3.8-flash',
+                model: 'gemini-2.5-flash',
                 contents
             }),
-            model: 'gemini-3.8-flash'
+            model: 'gemini-2.5-flash'
         };
     } catch (error) {
         if (!isTemporaryCapacityError(error)) throw error;
-        console.warn('Gemini 3.8 Flash is temporarily at capacity; retrying with gemini-2.0-flash.');
+        console.warn('Gemini 2.5 Flash is temporarily at capacity; retrying with gemini-2.0-flash.');
         return {
             response: await client.models.generateContent({
                 model: 'gemini-2.0-flash',
