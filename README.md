@@ -13,7 +13,7 @@ Responsive browser frontend for the Budget Tracker application. The Express/Mong
 
 ## Connect to the backend
 
-Edit `config.js` and set `BUDGET_TRACKER_API_BASE` to the backend origin (without a trailing `/api`), for example:
+Edit `public/config.js` and set `BUDGET_TRACKER_API_BASE` to the backend origin (without a trailing `/api`), for example:
 
 ```js
 window.BUDGET_TRACKER_API_BASE = 'https://your-backend.example.com';
@@ -25,7 +25,7 @@ The backend must allow the frontend's exact origin in its `FRONTEND_ORIGINS` env
 
 ## Run locally
 
-Serve this directory with any static file server, for example the VS Code Live Server extension on `http://localhost:5500`. Set the backend origin in `config.js` (typically `http://localhost:3000`) and allow `http://localhost:5500` in the backend CORS configuration.
+Serve the `public/` directory with any static file server, for example the VS Code Live Server extension on `http://localhost:5500`. Open `public/index.html`. Set the backend origin in `public/config.js` (typically `http://localhost:3000`) and allow `http://localhost:5500` in the backend CORS configuration.
 
 No frontend build step or package installation is required.
 
