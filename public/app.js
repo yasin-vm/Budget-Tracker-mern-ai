@@ -5,12 +5,16 @@ let currentUser = null;
 let userList = [];
 let transactions = [];
 let chatHistory = [];
+let parsedTransaction = null;
+let editingTransactionId = null;
+let transactionLoadVersion = 0;
 
 // DOM Elements
 const userSelect = document.getElementById('userSelect');
 const userNameEl = document.getElementById('userName');
 const userEmailEl = document.getElementById('userEmail');
 const userAvatarEl = document.getElementById('userAvatar');
+const accountStatus = document.getElementById('accountStatus');
 const quickCreateUserBtn = document.getElementById('quickCreateUserBtn');
 const refreshDataBtn = document.getElementById('refreshDataBtn');
 const aiStatusText = document.getElementById('aiStatusText');
@@ -19,6 +23,7 @@ const aiStatusText = document.getElementById('aiStatusText');
 const totalIncomeEl = document.getElementById('totalIncome');
 const totalExpensesEl = document.getElementById('totalExpenses');
 const netBalanceEl = document.getElementById('netBalance');
+const balanceHealthEl = document.getElementById('balanceHealth');
 const budgetLimitValEl = document.getElementById('budgetLimitVal');
 const budgetProgressBar = document.getElementById('budgetProgressBar');
 const budgetUtilText = document.getElementById('budgetUtilText');
@@ -42,6 +47,27 @@ const openNewTxModal = document.getElementById('openNewTxModal');
 const closeModalBtn = document.getElementById('closeModalBtn');
 const cancelModalBtn = document.getElementById('cancelModalBtn');
 const manualTxForm = document.getElementById('manualTxForm');
+const modalTitle = txModal.querySelector('.modal-header h3');
+const modalSubmitBtn = document.getElementById('modalSubmitBtn');
+
+async function requestJSON(url, options = {}) {
+    const response = await fetch(url, options);
+    const json = await response.json();
+    if (!response.ok || json.success === false) {
+        throw new Error(json.message || `Request failed (${response.status})`);
+    }
+    return json;
+}
+
+function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[character]);
+}
 
 // Initialization
 document.addEventListener('DOMContentLoaded', async () => {
@@ -63,6 +89,12 @@ function setupEventListeners() {
     // AI Transaction Logging
     aiAutoLogBtn.addEventListener('click', handleAiAutoLog);
     aiParseOnlyBtn.addEventListener('click', handleAiParsePreview);
+    aiInputText.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            handleAiAutoLog();
+        }
+    });
 
     // AI Insights
     generateInsightsBtn.addEventListener('click', handleGenerateInsights);
@@ -71,55 +103,78 @@ function setupEventListeners() {
     chatForm.addEventListener('submit', handleChatSubmit);
     clearChatBtn.addEventListener('click', () => {
         chatHistory = [];
-        chatMessages.innerHTML = `
-            <div class="chat-bubble assistant">
-                Chat cleared. Ask me any financial or budget question!
-            </div>
-        `;
+        chatMessages.replaceChildren();
+        appendChatBubble('assistant', 'Chat cleared. Ask me any financial or budget question!');
     });
 
     // Modal
-    openNewTxModal.addEventListener('click', () => txModal.classList.remove('hidden'));
-    closeModalBtn.addEventListener('click', () => txModal.classList.add('hidden'));
-    cancelModalBtn.addEventListener('click', () => txModal.classList.add('hidden'));
+    openNewTxModal.addEventListener('click', openCreateTransactionModal);
+    closeModalBtn.addEventListener('click', closeTransactionModal);
+    cancelModalBtn.addEventListener('click', closeTransactionModal);
+    document.getElementById('modalBackdrop').addEventListener('click', closeTransactionModal);
     manualTxForm.addEventListener('submit', handleManualTxSubmit);
+    transactionList.addEventListener('click', handleTransactionAction);
+    aiParseResult.addEventListener('click', handleParsedTransactionAction);
 }
 
 // ----------------- USER MANAGEMENT -----------------
 async function loadUsers() {
     try {
-        const res = await fetch(`${API_BASE}/users`);
-        const json = await res.json();
-        if (json.success && json.data.length > 0) {
-            userList = json.data;
-            renderUserDropdown();
+        const json = await requestJSON(`${API_BASE}/users`);
+        userList = Array.isArray(json.data) ? json.data : [];
+        renderUserDropdown();
+        if (userList.length > 0) {
             setCurrentUser(userList[0]);
         } else {
-            await createDemoUser();
+            setCurrentUser(null);
+            accountStatus.textContent = 'No accounts yet. Create a demo account to get started.';
         }
     } catch (err) {
-        console.error('Error fetching users:', err);
-        await createDemoUser();
+        setCurrentUser(null);
+        accountStatus.textContent = `Unable to load accounts: ${err.message}`;
     }
 }
 
 function renderUserDropdown() {
-    userSelect.innerHTML = userList.map(u => `
-        <option value="${u._id}">${u.name} (@${u.username || 'user'})</option>
-    `).join('');
+    userSelect.replaceChildren();
+    if (userList.length === 0) {
+        userSelect.add(new Option('No accounts available', ''));
+        userSelect.disabled = true;
+        return;
+    }
+    userSelect.disabled = false;
+    userList.forEach(user => {
+        userSelect.add(new Option(`${user.name || 'User'} (@${user.username || 'user'})`, user._id));
+    });
 }
 
 function setCurrentUser(user) {
     currentUser = user;
-    userSelect.value = user._id;
-    userNameEl.textContent = user.name || 'User';
-    userEmailEl.textContent = user.email || 'user@example.com';
-    userAvatarEl.textContent = (user.name || 'U').charAt(0).toUpperCase();
-    budgetLimitValEl.textContent = `₹${(user.budgetLimit || 20000).toLocaleString()}`;
-    loadTransactions(user._id);
+    const hasUser = Boolean(user);
+    userSelect.value = user?._id || '';
+    userNameEl.textContent = user?.name || 'No active account';
+    userEmailEl.textContent = user?.email || 'Create an account to begin';
+    userAvatarEl.textContent = (user?.name || 'U').charAt(0).toUpperCase();
+    budgetLimitValEl.textContent = `₹${(user?.budgetLimit ?? 20000).toLocaleString('en-IN')}`;
+    refreshDataBtn.disabled = !hasUser;
+    openNewTxModal.disabled = !hasUser;
+    aiAutoLogBtn.disabled = !hasUser;
+    generateInsightsBtn.disabled = !hasUser;
+    if (hasUser) {
+        accountStatus.textContent = '';
+        loadTransactions(user._id);
+    } else {
+        transactionLoadVersion += 1;
+        transactions = [];
+        renderTransactions();
+        calculateStats();
+    }
 }
 
 async function createDemoUser() {
+    if (quickCreateUserBtn.disabled) return;
+    quickCreateUserBtn.disabled = true;
+    accountStatus.textContent = 'Creating your account...';
     const randomSuffix = Math.floor(Math.random() * 9000 + 1000);
     const demoPayload = {
         name: `Candidate Demo ${randomSuffix}`,
@@ -132,21 +187,21 @@ async function createDemoUser() {
     };
 
     try {
-        const res = await fetch(`${API_BASE}/signup`, {
+        const json = await requestJSON(`${API_BASE}/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(demoPayload)
         });
-        const json = await res.json();
-        if (json.success && json.data) {
-            userList.push(json.data);
-            renderUserDropdown();
-            setCurrentUser(json.data);
-            // Pre-seed a few sample transactions
-            await seedSampleTransactions(json.data._id);
-        }
+        userList.push(json.data);
+        renderUserDropdown();
+        setCurrentUser(json.data);
+        accountStatus.textContent = 'Account created. Adding a few sample transactions...';
+        await seedSampleTransactions(json.data._id);
+        accountStatus.textContent = 'Demo account is ready.';
     } catch (err) {
-        console.error('Error creating demo user:', err);
+        accountStatus.textContent = `Could not create account: ${err.message}`;
+    } finally {
+        quickCreateUserBtn.disabled = false;
     }
 }
 
@@ -159,7 +214,7 @@ async function seedSampleTransactions(userId) {
     ];
 
     for (const sample of samples) {
-        await fetch(`${API_BASE}/transaction`, {
+        await requestJSON(`${API_BASE}/transaction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(sample)
@@ -170,17 +225,23 @@ async function seedSampleTransactions(userId) {
 
 // ----------------- TRANSACTIONS -----------------
 async function loadTransactions(userId) {
-    if (!userId) return;
+    const requestVersion = ++transactionLoadVersion;
+    if (!userId) {
+        transactions = [];
+        renderTransactions();
+        calculateStats();
+        return;
+    }
     try {
-        const res = await fetch(`${API_BASE}/transaction/${userId}`);
-        const json = await res.json();
-        if (json.success) {
-            transactions = json.data || [];
-            renderTransactions();
-            calculateStats();
-        }
+        const json = await requestJSON(`${API_BASE}/transaction/${userId}`);
+        if (requestVersion !== transactionLoadVersion || currentUser?._id !== userId) return;
+        transactions = Array.isArray(json.data) ? json.data : [];
+        renderTransactions();
+        calculateStats();
     } catch (err) {
-        console.error('Failed to load transactions:', err);
+        if (requestVersion === transactionLoadVersion && currentUser?._id === userId) {
+            accountStatus.textContent = `Unable to load transactions: ${err.message}`;
+        }
     }
 }
 
@@ -194,31 +255,33 @@ function calculateStats() {
         .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
     const balance = income - expenses;
-    const limit = currentUser?.budgetLimit || 20000;
-    const pct = limit > 0 ? Math.min(100, Math.round((expenses / limit) * 100)) : 0;
+    const limit = currentUser?.budgetLimit ?? 20000;
+    const usagePct = limit > 0 ? Math.round((expenses / limit) * 100) : 0;
+    const progressPct = Math.min(100, usagePct);
 
     totalIncomeEl.textContent = `₹${income.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
     totalExpensesEl.textContent = `₹${expenses.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
     netBalanceEl.textContent = `₹${balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
     netBalanceEl.className = balance >= 0 ? 'stat-value text-green' : 'stat-value text-red';
+    balanceHealthEl.textContent = balance >= 0 ? 'Income exceeds expenses' : 'Expenses exceed income';
 
-    budgetProgressBar.style.width = `${pct}%`;
-    if (pct >= 100) {
+    budgetProgressBar.style.width = `${progressPct}%`;
+    if (usagePct >= 100) {
         budgetProgressBar.style.background = 'var(--danger)';
-    } else if (pct >= 75) {
+    } else if (usagePct >= 75) {
         budgetProgressBar.style.background = 'var(--warning)';
     } else {
         budgetProgressBar.style.background = 'var(--primary)';
     }
 
-    budgetUtilText.textContent = `${pct}% of ₹${limit.toLocaleString()} budget used`;
+    budgetUtilText.textContent = `${usagePct}% of ₹${limit.toLocaleString('en-IN')} budget used`;
 }
 
 function renderTransactions() {
     if (!transactions.length) {
         transactionList.innerHTML = `
             <tr>
-                <td colspan="6" class="text-center text-muted">No transactions found. Add one above!</td>
+                <td colspan="6" class="text-center text-muted">${currentUser ? 'No transactions found. Add one above!' : 'Create or select an account to see transactions.'}</td>
             </tr>
         `;
         return;
@@ -226,39 +289,86 @@ function renderTransactions() {
 
     transactionList.innerHTML = transactions.map(t => {
         const isExp = t.type === 'expense';
-        const formattedDate = new Date(t.date || t.createdAt).toLocaleDateString('en-IN', {
+        const transactionDate = new Date(t.date || t.createdAt);
+        const formattedDate = Number.isNaN(transactionDate.getTime()) ? '—' : transactionDate.toLocaleDateString('en-IN', {
             month: 'short', day: 'numeric', year: 'numeric'
         });
         return `
             <tr>
-                <td><span class="badge ${isExp ? 'badge-expense' : 'badge-income'}">${t.type}</span></td>
-                <td><strong>${t.category}</strong></td>
-                <td>${t.description || '-'}</td>
+                <td><span class="badge ${isExp ? 'badge-expense' : 'badge-income'}">${escapeHTML(t.type)}</span></td>
+                <td><strong>${escapeHTML(t.category)}</strong></td>
+                <td class="tx-description">${escapeHTML(t.description || '-')}</td>
                 <td class="text-muted">${formattedDate}</td>
                 <td class="text-right ${isExp ? 'text-red' : 'text-green'} font-weight-bold">
                     ${isExp ? '-' : '+'}₹${Number(t.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </td>
                 <td class="text-center">
-                    <button class="btn btn-text btn-sm" onclick="handleDeleteTx('${t._id}')" title="Delete">🗑️</button>
+                    <div class="transaction-actions">
+                        <button class="btn btn-secondary btn-sm" data-action="edit" data-id="${escapeHTML(t._id)}" aria-label="Edit transaction">Edit</button>
+                        <button class="btn btn-text btn-sm" data-action="delete" data-id="${escapeHTML(t._id)}" aria-label="Delete transaction" title="Delete">Delete</button>
+                    </div>
                 </td>
             </tr>
         `;
     }).join('');
 }
 
+function dateInputValue(value) {
+    const date = new Date(value || Date.now());
+    if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+    return date.toISOString().slice(0, 10);
+}
+
+function openCreateTransactionModal() {
+    if (!currentUser) return;
+    editingTransactionId = null;
+    manualTxForm.reset();
+    document.getElementById('modalDate').value = dateInputValue(new Date());
+    modalTitle.textContent = 'Add New Transaction';
+    modalSubmitBtn.textContent = 'Save Transaction';
+    txModal.classList.remove('hidden');
+}
+
+function openEditTransactionModal(transaction) {
+    editingTransactionId = transaction._id;
+    document.getElementById('modalType').value = transaction.type;
+    document.getElementById('modalAmount').value = transaction.amount;
+    document.getElementById('modalCategory').value = transaction.category || '';
+    document.getElementById('modalDesc').value = transaction.description || '';
+    document.getElementById('modalDate').value = dateInputValue(transaction.date || transaction.createdAt);
+    modalTitle.textContent = 'Edit Transaction';
+    modalSubmitBtn.textContent = 'Update Transaction';
+    txModal.classList.remove('hidden');
+}
+
+function closeTransactionModal() {
+    txModal.classList.add('hidden');
+    editingTransactionId = null;
+    manualTxForm.reset();
+}
+
+async function handleTransactionAction(event) {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const transaction = transactions.find(item => item._id === button.dataset.id);
+    if (!transaction) return;
+    if (button.dataset.action === 'edit') {
+        openEditTransactionModal(transaction);
+    } else if (button.dataset.action === 'delete') {
+        await handleDeleteTx(transaction._id);
+    }
+}
+
 async function handleDeleteTx(id) {
     if (!confirm('Are you sure you want to delete this transaction?')) return;
     try {
-        const res = await fetch(`${API_BASE}/transaction/${id}`, { method: 'DELETE' });
-        const json = await res.json();
-        if (json.success) {
-            loadTransactions(currentUser?._id);
-        }
+        await requestJSON(`${API_BASE}/transaction/${id}`, { method: 'DELETE' });
+        await loadTransactions(currentUser?._id);
     } catch (err) {
         alert('Failed to delete transaction: ' + err.message);
     }
 }
-window.handleDeleteTx = handleDeleteTx;
 
 // ----------------- AI NATURAL LANGUAGE PARSER -----------------
 async function handleAiParsePreview() {
@@ -272,24 +382,22 @@ async function handleAiParsePreview() {
     aiParseOnlyBtn.textContent = 'Parsing...';
 
     try {
-        const res = await fetch(`${API_BASE}/ai/parse`, {
+        const json = await requestJSON(`${API_BASE}/ai/parse`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text })
         });
-        const json = await res.json();
-        if (json.success && json.data) {
-            const d = json.data;
-            aiParseResult.classList.remove('hidden');
-            aiParseResult.innerHTML = `
-                <div>
-                    <strong>AI Detected:</strong> ${d.type.toUpperCase()} of <strong>₹${d.amount}</strong> 
-                    in Category: <em>${d.category}</em> (${d.description}) 
-                    <span class="badge ${d.source === 'gemini-ai' ? 'badge-income' : 'badge-expense'}">${d.source}</span>
-                </div>
-                <button class="btn btn-ai btn-sm" onclick="confirmParsedTx(${JSON.stringify(d).replace(/"/g, '&quot;')})">Save This</button>
-            `;
-        }
+        parsedTransaction = json.data;
+        const d = parsedTransaction;
+        aiParseResult.classList.remove('hidden');
+        aiParseResult.innerHTML = `
+            <div>
+                <strong>Detected:</strong> ${escapeHTML(d.type).toUpperCase()} of <strong>₹${escapeHTML(d.amount)}</strong>
+                in <em>${escapeHTML(d.category)}</em> — ${escapeHTML(d.description)}
+                <span class="badge ${d.source === 'gemini-ai' ? 'badge-income' : 'badge-expense'}">${escapeHTML(d.source || 'rule-based-fallback')}</span>
+            </div>
+            <button class="btn btn-ai btn-sm" data-action="save-parsed" ${currentUser ? '' : 'disabled'}>Save This</button>
+        `;
     } catch (err) {
         alert('AI Parse error: ' + err.message);
     } finally {
@@ -298,31 +406,33 @@ async function handleAiParsePreview() {
     }
 }
 
-window.confirmParsedTx = async (parsed) => {
-    if (!currentUser) return;
+async function handleParsedTransactionAction(event) {
+    if (!event.target.closest('button[data-action="save-parsed"]') || !parsedTransaction) return;
+    if (!currentUser) {
+        accountStatus.textContent = 'Create or select an account before saving a transaction.';
+        return;
+    }
     try {
-        const res = await fetch(`${API_BASE}/transaction`, {
+        await requestJSON(`${API_BASE}/transaction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 userId: currentUser._id,
-                amount: parsed.amount,
-                type: parsed.type,
-                category: parsed.category,
-                description: parsed.description,
-                date: parsed.date || new Date()
+                amount: parsedTransaction.amount,
+                type: parsedTransaction.type,
+                category: parsedTransaction.category,
+                description: parsedTransaction.description,
+                date: parsedTransaction.date || new Date()
             })
         });
-        const json = await res.json();
-        if (json.success) {
-            aiParseResult.classList.add('hidden');
-            aiInputText.value = '';
-            await loadTransactions(currentUser._id);
-        }
+        aiParseResult.classList.add('hidden');
+        aiInputText.value = '';
+        parsedTransaction = null;
+        await loadTransactions(currentUser._id);
     } catch (err) {
         alert('Failed to save parsed transaction: ' + err.message);
     }
-};
+}
 
 async function handleAiAutoLog() {
     const text = aiInputText.value.trim();
@@ -339,7 +449,7 @@ async function handleAiAutoLog() {
     aiAutoLogBtn.textContent = '✨ Processing AI...';
 
     try {
-        const res = await fetch(`${API_BASE}/ai/auto-log`, {
+        await requestJSON(`${API_BASE}/ai/auto-log`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -347,18 +457,14 @@ async function handleAiAutoLog() {
                 text
             })
         });
-        const json = await res.json();
-        if (json.success) {
-            aiInputText.value = '';
-            aiParseResult.classList.add('hidden');
-            await loadTransactions(currentUser._id);
-        } else {
-            alert(json.message || 'Could not parse transaction.');
-        }
+        aiInputText.value = '';
+        aiParseResult.classList.add('hidden');
+        parsedTransaction = null;
+        await loadTransactions(currentUser._id);
     } catch (err) {
         alert('Auto-log error: ' + err.message);
     } finally {
-        aiAutoLogBtn.disabled = false;
+        aiAutoLogBtn.disabled = !currentUser;
         aiAutoLogBtn.textContent = '✨ Auto-Log with AI';
     }
 }
@@ -372,48 +478,53 @@ async function handleGenerateInsights() {
     insightsContent.innerHTML = `<p class="text-muted">🧠 AI is analyzing your cash flow and budget discipline...</p>`;
 
     try {
-        const res = await fetch(`${API_BASE}/ai/insights`, {
+        const json = await requestJSON(`${API_BASE}/ai/insights`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: currentUser._id })
         });
-        const json = await res.json();
-        if (json.success && json.data) {
-            const { stats, aiAnalysis, engine } = json.data;
+        if (json.data) {
+            const aiAnalysis = json.data.aiAnalysis || {};
+            const engine = json.data.engine || 'rule-based-fallback';
+            const alerts = Array.isArray(aiAnalysis.alerts) ? aiAnalysis.alerts : [];
+            const savingTips = Array.isArray(aiAnalysis.savingTips) ? aiAnalysis.savingTips : [];
+            const observations = Array.isArray(aiAnalysis.topSpendingObservations)
+                ? aiAnalysis.topSpendingObservations
+                : [];
 
             aiStatusText.textContent = `AI Engine: ${engine}`;
 
             let alertsHtml = '';
-            if (aiAnalysis.alerts && aiAnalysis.alerts.length > 0) {
+            if (alerts.length > 0) {
                 alertsHtml = `
                     <div class="insight-section">
                         <div class="insight-title" style="color: var(--danger)">⚠️ Priority Alerts</div>
                         <ul class="insight-list">
-                            ${aiAnalysis.alerts.map(a => `<li class="insight-item alert-item">${a}</li>`).join('')}
+                            ${alerts.map(a => `<li class="insight-item alert-item">${escapeHTML(a)}</li>`).join('')}
                         </ul>
                     </div>
                 `;
             }
 
             let tipsHtml = '';
-            if (aiAnalysis.savingTips && aiAnalysis.savingTips.length > 0) {
+            if (savingTips.length > 0) {
                 tipsHtml = `
                     <div class="insight-section">
                         <div class="insight-title">💡 Personalized Saving Recommendations</div>
                         <ul class="insight-list">
-                            ${aiAnalysis.savingTips.map(t => `<li class="insight-item"><strong>Tip:</strong> ${t}</li>`).join('')}
+                            ${savingTips.map(t => `<li class="insight-item"><strong>Tip:</strong> ${escapeHTML(t)}</li>`).join('')}
                         </ul>
                     </div>
                 `;
             }
 
             let obsHtml = '';
-            if (aiAnalysis.topSpendingObservations && aiAnalysis.topSpendingObservations.length > 0) {
+            if (observations.length > 0) {
                 obsHtml = `
                     <div class="insight-section">
                         <div class="insight-title">📊 Spending Observations</div>
                         <ul class="insight-list">
-                            ${aiAnalysis.topSpendingObservations.map(o => `<li class="insight-item">${o}</li>`).join('')}
+                            ${observations.map(o => `<li class="insight-item">${escapeHTML(o)}</li>`).join('')}
                         </ul>
                     </div>
                 `;
@@ -421,11 +532,11 @@ async function handleGenerateInsights() {
 
             insightsContent.innerHTML = `
                 <div class="health-score-badge">
-                    <div class="score-circle">${aiAnalysis.healthScore || 80}</div>
+                    <div class="score-circle">${escapeHTML(aiAnalysis.healthScore ?? 80)}</div>
                     <div>
                         <h4>Financial Health Score</h4>
-                        <p class="text-muted">${aiAnalysis.statusSummary}</p>
-                        <small>Status: <strong>${aiAnalysis.budgetStatus}</strong> | Engine: <code>${engine}</code></small>
+                        <p class="text-muted">${escapeHTML(aiAnalysis.statusSummary)}</p>
+                        <small>Status: <strong>${escapeHTML(aiAnalysis.budgetStatus)}</strong> | Engine: <code>${escapeHTML(engine)}</code></small>
                     </div>
                 </div>
                 ${alertsHtml}
@@ -433,14 +544,14 @@ async function handleGenerateInsights() {
                 ${tipsHtml}
                 <div class="insight-section">
                     <div class="insight-title">🔮 Month-End Forecast</div>
-                    <p style="font-size: 0.88rem; color: var(--text-muted);">${aiAnalysis.forecast}</p>
+                    <p style="font-size: 0.88rem; color: var(--text-muted);">${escapeHTML(aiAnalysis.forecast)}</p>
                 </div>
             `;
         }
     } catch (err) {
-        insightsContent.innerHTML = `<p class="text-red">Error generating insights: ${err.message}</p>`;
+        insightsContent.textContent = `Error generating insights: ${err.message}`;
     } finally {
-        generateInsightsBtn.disabled = false;
+        generateInsightsBtn.disabled = !currentUser;
         generateInsightsBtn.textContent = 'Analyze Now';
     }
 }
@@ -451,41 +562,38 @@ async function handleChatSubmit(e) {
     const message = chatInput.value.trim();
     if (!message) return;
 
-    // Append user message
     appendChatBubble('user', message);
     chatInput.value = '';
 
-    chatHistory.push({ role: 'user', content: message });
-
-    // Loading indicator
-    const loadingBubble = appendChatBubble('assistant', '<em>AI Financial Advisor is thinking...</em>');
+    const loadingBubble = appendChatBubble('assistant', 'AI Financial Advisor is thinking...');
+    const previousHistory = chatHistory.slice();
+    const chatSendBtn = document.getElementById('chatSendBtn');
+    chatSendBtn.disabled = true;
 
     try {
-        const res = await fetch(`${API_BASE}/ai/chat`, {
+        const json = await requestJSON(`${API_BASE}/ai/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 userId: currentUser?._id,
                 message,
-                history: chatHistory
+                history: previousHistory
             })
         });
-        const json = await res.json();
-        if (json.success && json.data) {
-            loadingBubble.innerHTML = json.data.reply.replace(/\n/g, '<br>');
-            chatHistory.push({ role: 'assistant', content: json.data.reply });
-        } else {
-            loadingBubble.textContent = 'Sorry, could not process request: ' + (json.message || 'Unknown error');
-        }
+        loadingBubble.textContent = json.data.reply;
+        chatHistory.push({ role: 'user', content: message });
+        chatHistory.push({ role: 'assistant', content: json.data.reply });
     } catch (err) {
         loadingBubble.textContent = 'Error connecting to AI advisor: ' + err.message;
+    } finally {
+        chatSendBtn.disabled = false;
     }
 }
 
-function appendChatBubble(role, htmlContent) {
+function appendChatBubble(role, content) {
     const bubble = document.createElement('div');
     bubble.className = `chat-bubble ${role}`;
-    bubble.innerHTML = htmlContent;
+    bubble.textContent = content;
     chatMessages.appendChild(bubble);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     return bubble;
@@ -497,28 +605,26 @@ async function handleManualTxSubmit(e) {
     if (!currentUser) return;
 
     const payload = {
-        userId: currentUser._id,
         type: document.getElementById('modalType').value,
         amount: parseFloat(document.getElementById('modalAmount').value),
         category: document.getElementById('modalCategory').value.trim(),
         description: document.getElementById('modalDesc').value.trim(),
-        date: new Date()
+        date: document.getElementById('modalDate').value
     };
 
     try {
-        const res = await fetch(`${API_BASE}/transaction`, {
-            method: 'POST',
+        const isEditing = Boolean(editingTransactionId);
+        const url = isEditing
+            ? `${API_BASE}/transaction/${editingTransactionId}`
+            : `${API_BASE}/transaction`;
+        await requestJSON(url, {
+            method: isEditing ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ ...payload, ...(!isEditing ? { userId: currentUser._id } : {}) })
         });
-        const json = await res.json();
-        if (json.success) {
-            txModal.classList.add('hidden');
-            manualTxForm.reset();
-            await loadTransactions(currentUser._id);
-        }
+        closeTransactionModal();
+        await loadTransactions(currentUser._id);
     } catch (err) {
-        alert('Failed to save: ' + err.message);
+        alert(`Failed to ${editingTransactionId ? 'update' : 'save'} transaction: ${err.message}`);
     }
 }
-

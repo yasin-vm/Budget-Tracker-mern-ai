@@ -1,14 +1,18 @@
 import { GoogleGenAI } from '@google/genai';
 
 let aiClient = null;
+let configuredApiKey = null;
 
 function getAIClient() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey.trim() === '' || apiKey === 'your_gemini_api_key_here') {
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
+    if (!apiKey || apiKey.toLowerCase() === 'your_gemini_api_key_here') {
+        aiClient = null;
+        configuredApiKey = null;
         return null;
     }
-    if (!aiClient) {
-        aiClient = new GoogleGenAI({ apiKey: apiKey.trim() });
+    if (!aiClient || configuredApiKey !== apiKey) {
+        aiClient = new GoogleGenAI({ apiKey });
+        configuredApiKey = apiKey;
     }
     return aiClient;
 }
@@ -96,9 +100,23 @@ Respond ONLY with a valid JSON object matching this schema, without any markdown
             const rawText = response.text ? response.text.trim() : '';
             const cleaned = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
             const parsed = JSON.parse(cleaned);
+            const amount = Number(parsed.amount);
+            const type = String(parsed.type || '').toLowerCase();
+            if (!Number.isFinite(amount) || amount < 0 || !['income', 'expense'].includes(type)) {
+                throw new Error('Gemini returned invalid transaction fields.');
+            }
+            const parsedDate = parsed.date ? new Date(parsed.date) : new Date();
 
             return {
-                ...parsed,
+                amount,
+                type,
+                category: typeof parsed.category === 'string' && parsed.category.trim()
+                    ? parsed.category.trim()
+                    : 'Other',
+                description: typeof parsed.description === 'string' && parsed.description.trim()
+                    ? parsed.description.trim()
+                    : text.trim(),
+                date: Number.isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString(),
                 source: 'gemini-ai'
             };
         } catch (error) {
@@ -321,4 +339,3 @@ Answer the user's questions clearly, giving specific figures based on their fina
         engine: 'rule-based-fallback'
     };
 }
-

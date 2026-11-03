@@ -94,17 +94,39 @@ export const deleteTransaction = async (req, res) => {
 export const updateTransaction = async (req, res) => {
 
     try {
+        const { amount, type, category, description, date } = req.body;
+        const updates = {};
+        if (amount !== undefined) updates.amount = amount;
+        if (type !== undefined) updates.type = type;
+        if (category !== undefined) updates.category = category;
+        if (description !== undefined) updates.description = description;
+        if (date !== undefined) updates.date = date;
 
         const transaction =
             await Transaction.findByIdAndUpdate(
 
                 req.params.id,
 
-                req.body,
+                updates,
 
-                { returnDocument: "after" }
+                { returnDocument: "after", runValidators: true }
 
             );
+
+        if (!transaction) {
+            return res.status(404).json({
+                success: false,
+                message: "Transaction not found"
+            });
+        }
+
+        if (category !== undefined) {
+            await Category.findOneAndUpdate(
+                { name: category },
+                { name: category },
+                { upsert: true }
+            );
+        }
 
         res.status(200).json({
             success: true,
