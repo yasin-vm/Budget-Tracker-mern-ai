@@ -97,12 +97,41 @@ export const logout = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
     try {
-        const { name, email, phone, budgetLimit } = req.body;
+        const { name, email, phone, budgetLimit, salary } = req.body;
         const updates = {};
-        if (name !== undefined) updates.name = name;
-        if (email !== undefined) updates.email = email;
-        if (phone !== undefined) updates.phone = phone;
-        if (budgetLimit !== undefined) updates.budgetLimit = budgetLimit;
+        if (name !== undefined) {
+            if (typeof name !== 'string' || !name.trim()) {
+                return res.status(400).json({ success: false, message: 'Name is required.' });
+            }
+            updates.name = name.trim();
+        }
+        if (email !== undefined) {
+            const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+                return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
+            }
+            updates.email = normalizedEmail;
+        }
+        if (phone !== undefined) {
+            const phoneText = String(phone);
+            if (!/^\d{10}$/.test(phoneText)) {
+                return res.status(400).json({ success: false, message: 'Enter a valid 10-digit phone number.' });
+            }
+            updates.phone = Number(phoneText);
+        }
+        for (const [field, value] of [['budgetLimit', budgetLimit], ['salary', salary]]) {
+            if (value !== undefined) {
+                if (value === null || (typeof value !== 'number' && typeof value !== 'string')
+                    || (typeof value === 'string' && !value.trim())) {
+                    return res.status(400).json({ success: false, message: `${field} must be a non-negative number.` });
+                }
+                const amount = Number(value);
+                if (!Number.isFinite(amount) || amount < 0) {
+                    return res.status(400).json({ success: false, message: `${field} must be a non-negative number.` });
+                }
+                updates[field] = amount;
+            }
+        }
 
         const user = await User.findByIdAndUpdate(req.user._id, updates, {
             returnDocument: 'after',

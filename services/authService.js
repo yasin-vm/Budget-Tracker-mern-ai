@@ -44,6 +44,7 @@ export function publicUser(user) {
         email: user.email,
         username: user.username,
         role: user.role,
-        budgetLimit: user.budgetLimit
+        budgetLimit: user.budgetLimit,
+        salary: user.salary ?? 0
     };
 }

@@ -12,7 +12,8 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 20000,
         min: 0
-    }
+    },
+    salary: { type: Number, default: 0, min: 0 }
 });
 
 const User = mongoose.model('users', userSchema);

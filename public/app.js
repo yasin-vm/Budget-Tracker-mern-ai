@@ -24,6 +24,19 @@ const accountStatus = document.getElementById('accountStatus');
 const logoutBtn = document.getElementById('logoutBtn');
 const refreshDataBtn = document.getElementById('refreshDataBtn');
 const aiStatusText = document.getElementById('aiStatusText');
+const viewTitle = document.getElementById('viewTitle');
+const viewSubtitle = document.getElementById('viewSubtitle');
+const profileForm = document.getElementById('profileForm');
+const profileStatus = document.getElementById('profileStatus');
+const transactionSearch = document.getElementById('transactionSearch');
+const categoryFilter = document.getElementById('categoryFilter');
+
+const viewDetails = {
+    dashboardView: { title: 'Dashboard', subtitle: 'Your finances at a glance, with an AI-powered quick add.' },
+    advisorView: { title: 'AI Advisor', subtitle: 'Get personalized answers based on your salary, budget, and transactions.' },
+    transactionsView: { title: 'Transactions', subtitle: 'Search, filter, and manage your financial history.' },
+    profileView: { title: 'Profile & Budget Settings', subtitle: 'Keep your account details and financial targets up to date.' }
+};
 
 // Stats Elements
 const totalIncomeEl = document.getElementById('totalIncome');
@@ -94,6 +107,12 @@ function setupEventListeners() {
     signupPanel.addEventListener('submit', handleSignup);
     logoutBtn.addEventListener('click', handleLogout);
     refreshDataBtn.addEventListener('click', () => loadTransactions(currentUser?._id));
+    document.querySelectorAll('[data-view-target]').forEach(button => {
+        button.addEventListener('click', () => setActiveView(button.dataset.viewTarget));
+    });
+    profileForm.addEventListener('submit', handleProfileSubmit);
+    transactionSearch.addEventListener('input', renderTransactions);
+    categoryFilter.addEventListener('change', renderTransactions);
 
     // AI Transaction Logging
     aiAutoLogBtn.addEventListener('click', handleAiAutoLog);
@@ -187,10 +206,66 @@ function showDashboard(user) {
     userBudgetEl.textContent = `Monthly budget: ₹${Number(user.budgetLimit ?? 20000).toLocaleString('en-IN')}`;
     userAvatarEl.textContent = (user.name || 'U').charAt(0).toUpperCase();
     budgetLimitValEl.textContent = `₹${Number(user.budgetLimit ?? 20000).toLocaleString('en-IN')}`;
+    document.getElementById('profileName').value = user.name || '';
+    document.getElementById('profileEmail').value = user.email || '';
+    document.getElementById('profilePhone').value = user.phone || '';
+    document.getElementById('profileBudgetLimit').value = user.budgetLimit ?? 20000;
+    document.getElementById('profileSalary').value = user.salary ?? 0;
     accountStatus.textContent = '';
     authScreen.classList.add('hidden');
     appLayout.classList.remove('hidden');
+    calculateStats();
     loadTransactions(user._id);
+}
+
+function setActiveView(viewId) {
+    if (!viewDetails[viewId]) return;
+    document.querySelectorAll('.app-view').forEach(view => {
+        const isActive = view.id === viewId;
+        view.hidden = !isActive;
+        view.classList.toggle('active-view', isActive);
+    });
+    document.querySelectorAll('[data-view-target]').forEach(button => {
+        const isActive = button.dataset.viewTarget === viewId;
+        button.classList.toggle('active', isActive);
+        if (isActive) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+    });
+    viewTitle.textContent = viewDetails[viewId].title;
+    viewSubtitle.textContent = viewDetails[viewId].subtitle;
+}
+
+async function handleProfileSubmit(event) {
+    event.preventDefault();
+    if (!currentUser) return;
+
+    const saveButton = document.getElementById('saveProfileBtn');
+    saveButton.disabled = true;
+    profileStatus.textContent = 'Saving changes...';
+    profileStatus.classList.remove('error');
+    const profile = {
+        name: document.getElementById('profileName').value.trim(),
+        email: document.getElementById('profileEmail').value.trim(),
+        phone: document.getElementById('profilePhone').value.trim(),
+        budgetLimit: Number(document.getElementById('profileBudgetLimit').value),
+        salary: Number(document.getElementById('profileSalary').value)
+    };
+
+    try {
+        const { data } = await requestJSON(`${API_BASE}/profile`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(profile)
+        });
+        saveSession(sessionToken, data);
+        profileStatus.textContent = 'Profile and budget settings saved.';
+        await handleGenerateInsights();
+    } catch (err) {
+        profileStatus.textContent = `Unable to save profile: ${err.message}`;
+        profileStatus.classList.add('error');
+    } finally {
+        saveButton.disabled = false;
+    }
 }
 
 async function handleLogin(event) {
@@ -310,16 +385,31 @@ function calculateStats() {
 }
 
 function renderTransactions() {
-    if (!transactions.length) {
+    const searchTerm = transactionSearch.value.trim().toLowerCase();
+    const categories = [...new Set(transactions.map(transaction => transaction.category).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+    const priorCategory = categoryFilter.value;
+    categoryFilter.replaceChildren(new Option('All categories', ''));
+    categories.forEach(category => categoryFilter.add(new Option(category, category)));
+    if (categories.includes(priorCategory)) categoryFilter.value = priorCategory;
+    const selectedCategory = categoryFilter.value;
+
+    const filteredTransactions = transactions.filter(transaction => {
+        const matchesCategory = !selectedCategory || transaction.category === selectedCategory;
+        const searchableText = `${transaction.description || ''} ${transaction.category || ''} ${transaction.type || ''}`.toLowerCase();
+        return matchesCategory && searchableText.includes(searchTerm);
+    });
+
+    if (!filteredTransactions.length) {
         transactionList.innerHTML = `
             <tr>
-                <td colspan="6" class="text-center text-muted">${currentUser ? 'No transactions found. Add one above!' : 'Log in to view your transactions.'}</td>
+                <td colspan="6" class="text-center text-muted">${transactions.length ? 'No transactions match these filters.' : currentUser ? 'No transactions found. Add one above!' : 'Log in to view your transactions.'}</td>
             </tr>
         `;
         return;
     }
 
-    transactionList.innerHTML = transactions.map(t => {
+    transactionList.innerHTML = filteredTransactions.map(t => {
         const isExp = t.type === 'expense';
         const transactionDate = new Date(t.date || t.createdAt);
         const formattedDate = Number.isNaN(transactionDate.getTime()) ? '—' : transactionDate.toLocaleDateString('en-IN', {
@@ -612,6 +702,10 @@ async function handleChatSubmit(e) {
                 history: previousHistory
             })
         });
+        const engine = json.data.engine || 'rule-based-fallback';
+        aiStatusText.textContent = engine === 'rule-based-fallback'
+            ? 'AI Engine: fallback (set GEMINI_API_KEY for Gemini)'
+            : `AI Engine: ${engine}`;
         loadingBubble.textContent = json.data.reply;
         chatHistory.push({ role: 'user', content: message });
         chatHistory.push({ role: 'assistant', content: json.data.reply });

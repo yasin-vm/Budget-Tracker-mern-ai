@@ -93,7 +93,7 @@ Respond ONLY with a valid JSON object matching this schema, without any markdown
 }`;
 
             const response = await client.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: 'gemini-3.8-flash',
                 contents: prompt,
             });
 
@@ -144,7 +144,8 @@ export async function generateSpendingInsights({ user, transactions }) {
         .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
     const netSavings = totalIncome - totalExpense;
-    const budgetLimit = user?.budgetLimit || 20000;
+    const budgetLimit = user?.budgetLimit ?? 20000;
+    const salary = Number(user?.salary) || 0;
     const budgetUtilizationPct = budgetLimit > 0 ? ((totalExpense / budgetLimit) * 100).toFixed(1) : 0;
 
     // Spending by category
@@ -164,6 +165,7 @@ export async function generateSpendingInsights({ user, transactions }) {
         totalIncome,
         totalExpense,
         netSavings,
+        salary,
         budgetLimit,
         budgetUtilizationPct: Number(budgetUtilizationPct),
         transactionCount: transactions.length,
@@ -177,6 +179,7 @@ export async function generateSpendingInsights({ user, transactions }) {
 Analyze the following user's financial profile and recent transactions:
 
 User Name: ${user?.name || 'User'}
+Base Monthly Salary: ₹${salary}
 Monthly Budget Limit: ₹${budgetLimit}
 Total Income: ₹${totalIncome}
 Total Expense: ₹${totalExpense}
@@ -275,7 +278,8 @@ export async function chatWithFinancialAssistant({ user, transactions, userMessa
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
-    const budgetLimit = user?.budgetLimit || 20000;
+    const budgetLimit = user?.budgetLimit ?? 20000;
+    const salary = Number(user?.salary) || 0;
     const balance = totalIncome - totalExpense;
 
     const categoryTotals = {};
@@ -292,6 +296,7 @@ export async function chatWithFinancialAssistant({ user, transactions, userMessa
             const systemContext = `You are a helpful, professional, and friendly AI Financial Assistant embedded inside a MERN Budget Tracker.
 User Details:
 - Name: ${user?.name || 'User'}
+- Base Monthly Salary: ₹${salary}
 - Budget Limit: ₹${budgetLimit}
 - Total Income: ₹${totalIncome}
 - Total Expenses: ₹${totalExpense}
@@ -323,15 +328,34 @@ Answer the user's questions clearly, giving specific figures based on their fina
 
     // Rule-based conversational fallback
     const lower = userMessage.toLowerCase();
-    let reply = `Here is your current financial snapshot: Total income is ₹${totalIncome}, total expenses are ₹${totalExpense}, leaving you with a balance of ₹${balance}. Your monthly budget limit is ₹${budgetLimit}.`;
+    const snapshot = `Your current snapshot: income ₹${totalIncome.toLocaleString('en-IN')}, expenses ₹${totalExpense.toLocaleString('en-IN')}, net balance ₹${balance.toLocaleString('en-IN')}, and monthly expense budget ₹${budgetLimit.toLocaleString('en-IN')}.`;
+    const remainingBudget = Math.max(0, budgetLimit - totalExpense);
+    let reply;
 
-    if (lower.includes('afford') || lower.includes('buy')) {
-        reply = `Your current balance is ₹${balance} and your budget limit is ₹${budgetLimit} (spent: ₹${totalExpense}). If the purchase fits comfortably within your remaining budget of ₹${Math.max(0, budgetLimit - totalExpense)}, you can consider it!`;
+    if (/^(hi|hello|hey|good morning|good afternoon|good evening)\b/.test(lower.trim())) {
+        reply = `Hi${user?.name ? ` ${user.name}` : ''}! I can help you review spending, set a budget plan, or think through a purchase. ${snapshot}`;
+    } else if (/\b(plan|planning|budget|organize|organise|manage my money|where to start)\b/.test(lower)) {
+        const essentials = Math.round(budgetLimit * 0.5);
+        const flexible = Math.round(budgetLimit * 0.3);
+        const buffer = budgetLimit - essentials - flexible;
+        const weeksLeft = Math.max(1, (new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate() - new Date().getDate() + 1) / 7);
+        const weeklyLimit = Math.round(remainingBudget / weeksLeft);
+        const leadingCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0];
+        reply = `Here’s a practical plan for your ₹${budgetLimit.toLocaleString('en-IN')} monthly expense budget:\n\n1. Set category caps: essentials up to ₹${essentials.toLocaleString('en-IN')} (50%), flexible spending up to ₹${flexible.toLocaleString('en-IN')} (30%), and keep ₹${buffer.toLocaleString('en-IN')} (20%) as a buffer.\n2. Pace spending: you have ₹${remainingBudget.toLocaleString('en-IN')} left this month. Aim to stay near ₹${weeklyLimit.toLocaleString('en-IN')} per week for the rest of the month.\n3. Check in weekly: compare actual spending with your caps and move money from flexible spending before touching the buffer.\n4. Log income and expenses as they happen so I can tailor the plan to your real cash flow${leadingCategory ? `; your largest recorded expense category is ${leadingCategory[0]} at ₹${leadingCategory[1].toLocaleString('en-IN')}` : '. You have no recorded spending yet, so this is a starter plan'}.\n\nThis is a spending framework, not an estimate of your income or savings.`;
+    } else if (lower.includes('afford') || lower.includes('buy')) {
+        reply = `You have ₹${remainingBudget.toLocaleString('en-IN')} left in your monthly expense budget (₹${budgetLimit.toLocaleString('en-IN')} limit minus ₹${totalExpense.toLocaleString('en-IN')} spent). Consider whether the purchase still leaves enough for your essential costs.`;
     } else if (lower.includes('food') || lower.includes('eat') || lower.includes('restaurant')) {
-        const foodSpend = categoryTotals['Food'] || 0;
-        reply = `You have spent ₹${foodSpend} on Food so far.`;
+        const foodSpend = Object.entries(categoryTotals)
+            .filter(([category]) => /food|dining|restaurant/i.test(category))
+            .reduce((sum, [, amount]) => sum + amount, 0);
+        reply = `You have spent ₹${foodSpend.toLocaleString('en-IN')} on food and dining so far.`;
     } else if (lower.includes('save') || lower.includes('tip') || lower.includes('reduce')) {
-        reply = `Tip: Review your highest expense categories (currently: ${Object.keys(categoryTotals).join(', ') || 'none yet'}). Setting category-level caps will prevent budget overruns.`;
+        const categories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+        reply = categories.length
+            ? `To reduce spending, start with ${categories[0][0]} (₹${categories[0][1].toLocaleString('en-IN')} recorded). Set a weekly cap for that category, review it before discretionary purchases, and keep recurring bills visible. ${snapshot}`
+            : `There is no spending history yet to identify savings opportunities. Start by logging purchases, then set category caps. A starter approach is to reserve half of your ₹${budgetLimit.toLocaleString('en-IN')} expense budget for essentials and review the rest weekly.`;
+    } else {
+        reply = `${snapshot}\n\nI can help with a budget plan, category spending, savings ideas, or whether a purchase fits your remaining budget. What would you like to focus on?`;
     }
 
     return {

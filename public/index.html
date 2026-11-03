@@ -98,10 +98,10 @@
             </div>
 
             <nav class="nav-links">
-                <a href="#overview" class="nav-link active">📊 Dashboard</a>
-                <a href="#ai-insights" class="nav-link">🧠 AI Insights</a>
-                <a href="#ai-assistant" class="nav-link">💬 AI Financial Advisor</a>
-                <a href="#transactions" class="nav-link">💸 Transactions</a>
+                <button type="button" class="nav-link active" data-view-target="dashboardView" aria-current="page">📊 Dashboard</button>
+                <button type="button" class="nav-link" data-view-target="advisorView">💬 AI Advisor</button>
+                <button type="button" class="nav-link" data-view-target="transactionsView">💸 Transactions</button>
+                <button type="button" class="nav-link" data-view-target="profileView">⚙️ Profile &amp; Budget</button>
             </nav>
         </aside>
 
@@ -110,15 +110,16 @@
             <!-- Header -->
             <header class="top-header">
                 <div>
-                    <h1>Financial Dashboard</h1>
-                    <p class="subtitle">AI-assisted personal budget tracking & predictive analytics</p>
+                    <h1 id="viewTitle">Dashboard</h1>
+                    <p class="subtitle" id="viewSubtitle">Your finances at a glance, with an AI-powered quick add.</p>
                 </div>
                 <div class="header-actions">
                     <button id="refreshDataBtn" class="btn btn-secondary">🔄 Refresh</button>
-                    <button id="openNewTxModal" class="btn btn-primary">+ Manual Entry</button>
                 </div>
             </header>
 
+            <div class="views-container">
+            <section id="dashboardView" class="app-view active-view" aria-labelledby="viewTitle">
             <!-- Metrics Summary Cards -->
             <section class="stats-grid" id="overview">
                 <div class="stat-card">
@@ -178,55 +179,60 @@
                 <div id="aiParseResult" class="ai-parse-preview hidden"></div>
             </section>
 
-            <!-- Grid: AI Insights & AI Chat Advisor -->
-            <section class="ai-features-grid">
-                <!-- AI Insights Card -->
-                <div class="card ai-insights-card" id="ai-insights">
-                    <div class="card-header">
-                        <div>
-                            <h2>🧠 AI Financial Health & Insights</h2>
-                            <p class="card-subtitle">Automated diagnostics & budget recommendations</p>
-                        </div>
-                        <button id="generateInsightsBtn" class="btn btn-secondary btn-sm">Analyze Now</button>
+            <!-- AI Financial Insights -->
+            <section class="card ai-insights-card" id="ai-insights">
+                <div class="card-header">
+                    <div>
+                        <h2>🧠 AI Financial Insights</h2>
+                        <p class="card-subtitle">Spending patterns, budget alerts, and practical tips</p>
                     </div>
-                    <div class="card-body" id="insightsContent">
-                        <div class="empty-state">
-                            <p>Click <strong>"Analyze Now"</strong> to let AI evaluate your budget and spending patterns.</p>
-                        </div>
+                    <button id="generateInsightsBtn" class="btn btn-secondary btn-sm">Analyze Now</button>
+                </div>
+                <div class="card-body" id="insightsContent">
+                    <div class="empty-state">
+                        <p>Select <strong>Analyze Now</strong> to review your budget and spending.</p>
                     </div>
                 </div>
+            </section>
+            </section>
 
-                <!-- AI Financial Chatbot -->
-                <div class="card ai-chat-card" id="ai-assistant">
+            <section id="advisorView" class="app-view" aria-labelledby="viewTitle" hidden>
+                <div class="card ai-chat-card advisor-panel" id="ai-assistant">
                     <div class="card-header">
                         <div>
-                            <h2>💬 Ask Your AI Financial Advisor</h2>
-                            <p class="card-subtitle">Ask questions about your budget, savings, or spending</p>
+                            <h2>💬 AI Financial Advisor</h2>
+                            <p class="card-subtitle">Ask about your transactions, budget, salary, or savings plan</p>
                         </div>
-                        <button id="clearChatBtn" class="btn btn-text btn-sm">Clear</button>
+                        <button id="clearChatBtn" class="btn btn-text btn-sm">Clear chat</button>
                     </div>
-                    <div class="chat-messages" id="chatMessages">
+                    <div class="chat-messages" id="chatMessages" aria-live="polite">
                         <div class="chat-bubble assistant">
-                            Hello! I'm your AI Budget Advisor. I have live access to your spending records. Ask me anything like:
-                            <br>• <em>"How much have I spent on food?"</em>
-                            <br>• <em>"Can I afford an ₹8,000 purchase?"</em>
-                            <br>• <em>"Give me 3 tips to stay under my budget limit."</em>
+                            Hello! Ask me about your spending, salary, budget, or a financial plan.
                         </div>
                     </div>
                     <form id="chatForm" class="chat-input-row">
-                        <input type="text" id="chatInput" placeholder="Ask financial advisor..." class="chat-input" required autocomplete="off">
+                        <input type="text" id="chatInput" placeholder="Ask your financial advisor..." class="chat-input" required autocomplete="off">
                         <button type="submit" class="btn btn-primary" id="chatSendBtn">Send</button>
                     </form>
                 </div>
             </section>
 
-            <!-- Recent Transactions Table -->
-            <section class="card" id="transactions">
-                <div class="card-header">
+            <section id="transactionsView" class="app-view" aria-labelledby="viewTitle" hidden>
+            <section class="card transaction-panel" id="transactions">
+                <div class="card-header transaction-header">
                     <div>
-                        <h2>Transactions History</h2>
-                        <p class="card-subtitle">All tracked expenses and income records</p>
+                        <h2>Transaction History</h2>
+                        <p class="card-subtitle">Search, filter, and manage your records.</p>
                     </div>
+                    <button id="openNewTxModal" class="btn btn-primary">+ Add Transaction</button>
+                </div>
+                <div class="transaction-filters">
+                    <label class="sr-only" for="transactionSearch">Search transactions</label>
+                    <input id="transactionSearch" class="form-input" type="search" placeholder="Search descriptions or categories">
+                    <label class="sr-only" for="categoryFilter">Filter by category</label>
+                    <select id="categoryFilter" class="form-input">
+                        <option value="">All categories</option>
+                    </select>
                 </div>
                 <div class="table-responsive">
                     <table class="tx-table">
@@ -248,6 +254,47 @@
                     </table>
                 </div>
             </section>
+            </section>
+
+            <section id="profileView" class="app-view" aria-labelledby="viewTitle" hidden>
+                <section class="card profile-panel">
+                    <div class="card-header">
+                        <div>
+                            <h2>Profile &amp; Budget Settings</h2>
+                            <p class="card-subtitle">Manage your account information and monthly financial targets.</p>
+                        </div>
+                    </div>
+                    <form id="profileForm" class="profile-form">
+                        <div class="profile-fields">
+                            <div class="form-group">
+                                <label for="profileName">Full Name</label>
+                                <input id="profileName" class="form-input" name="name" autocomplete="name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="profileEmail">Email Address</label>
+                                <input id="profileEmail" class="form-input" name="email" type="email" autocomplete="email" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="profilePhone">Phone Number</label>
+                                <input id="profilePhone" class="form-input" name="phone" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" autocomplete="tel" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="profileBudgetLimit">Monthly Budget Limit (₹)</label>
+                                <input id="profileBudgetLimit" class="form-input" name="budgetLimit" type="number" min="0" step="0.01" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="profileSalary">Base Monthly Salary (₹)</label>
+                                <input id="profileSalary" class="form-input" name="salary" type="number" min="0" step="0.01" required>
+                            </div>
+                        </div>
+                        <p id="profileStatus" class="profile-status" role="status" aria-live="polite"></p>
+                        <div class="profile-actions">
+                            <button id="saveProfileBtn" class="btn btn-primary" type="submit">Save Changes</button>
+                        </div>
+                    </form>
+                </section>
+            </section>
+            </div>
         </main>
     </div>
 

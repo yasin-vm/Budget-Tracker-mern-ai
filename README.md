@@ -19,12 +19,19 @@ An intelligent, full-stack personal finance and budget tracking platform built o
 
 ### 💬 3. Context-Aware AI Financial Assistant
 - An interactive chatbot with real-time access to the user's financial profile, category breakdown, and transaction history.
+- Includes the user's base monthly salary and monthly budget limit in its Gemini context.
 - Ask questions like:
   - *"How much did I spend on food this month?"*
   - *"Can I afford an ₹8,000 gadget right now?"*
   - *"What are 3 ways I can cut down my expenses?"*
 
-### 🛡️ 4. Dual-Engine Architecture (Resilient Fallback)
+### ⚙️ 4. Profile, Budget & Tabbed Dashboard
+- Dashboard, AI Advisor, Transactions, and Profile & Budget Settings are separate navigation views.
+- Update your name, email, phone, monthly budget limit, and base monthly salary from the profile page.
+- Transaction history supports text search, category filtering, and existing edit/delete actions.
+- Profile changes are saved to MongoDB and refreshed in the browser session and AI context.
+
+### 🛡️ 5. Dual-Engine Architecture (Resilient Fallback)
 - **Primary Engine**: Google Gemini API (`@google/genai`).
 - **Offline / Fallback Engine**: Built-in rule-based NLP parser and statistical advisor. If no API key is provided or network is offline, the app continues to function seamlessly without crashing.
 
