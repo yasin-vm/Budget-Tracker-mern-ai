@@ -25,9 +25,35 @@ The backend must allow the frontend's exact origin in its `FRONTEND_ORIGINS` env
 
 ## Run locally
 
-Serve the `public/` directory with any static file server, for example the VS Code Live Server extension on `http://localhost:5500`. Open `public/index.html`. Set the backend origin in `public/config.js` (typically `http://localhost:3000`) and allow `http://localhost:5500` in the backend CORS configuration.
+The local project layout keeps the frontend and backend as separate repositories:
 
-No frontend build step or package installation is required.
+```text
+budget tracker on MERN/
+├── public/       # Frontend files
+├── backend/      # Backend repository
+├── package.json  # Starts both local services
+└── README.md
+```
+
+Requirements: Node.js/npm, Python (the Windows `py` launcher), and a configured MongoDB connection in `backend/.env`.
+
+From the project root, install the root development tool once and start both services:
+
+```powershell
+npm install
+npm start
+```
+
+Open the frontend at `http://localhost:5500`. The backend API runs at `http://localhost:3000`; `http://localhost:3000/api` lists its endpoints. Keep the terminal running while using the app and press `Ctrl+C` to stop both services.
+
+To run either service separately, use two terminals from the project root:
+
+```powershell
+npm run start:backend
+npm run start:frontend
+```
+
+The frontend API origin is configured in `public/config.js` (defaults to `http://localhost:3000`). The backend must allow `http://localhost:5500` in `FRONTEND_ORIGINS`.
 
 ## Repository description
 
